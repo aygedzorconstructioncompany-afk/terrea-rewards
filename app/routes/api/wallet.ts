@@ -1,49 +1,48 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "@remix-run/node";
+export async function loader() {
+  const points = 123;
 
-// 👉 GET /api/wallet
-export async function loader({ request }: LoaderFunctionArgs) {
-  try {
-    const url = new URL(request.url);
-
-    console.log("🔥 PROXY HIT");
-    console.log("QUERY:", url.searchParams.toString());
-
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        points: 123,
-      }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-  } catch (e) {
-    console.error("ERROR:", e);
-
-    return new Response(
-      JSON.stringify({ ok: false }),
-      {
-        status: 200,
-        headers: {
-          "Content-Type": "application/json",
-        },
-      }
-    );
-  }
+  return new Response(`
+    <html>
+      <head>
+        <title>Rewards</title>
+        <style>
+          body {
+            font-family: Arial;
+            background: #f5f5f5;
+            padding: 40px;
+          }
+          .card {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 400px;
+            margin: auto;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+          }
+          h1 {
+            margin-bottom: 10px;
+          }
+          .points {
+            font-size: 48px;
+            font-weight: bold;
+            color: #2e7d32;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>Your Rewards</h1>
+          <div class="points">${points}</div>
+          <p>Available points</p>
+        </div>
+      </body>
+    </html>
+  `, {
+    headers: { "Content-Type": "text/html" },
+  });
 }
 
-// 👉 POST /api/wallet
-export async function action({ request }: ActionFunctionArgs) {
-  return new Response(
-    JSON.stringify({ ok: true }),
-    {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    }
-  );
+export async function action() {
+  return new Response("OK");
 }
