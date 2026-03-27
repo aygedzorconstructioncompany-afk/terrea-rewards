@@ -1,4 +1,4 @@
-import prisma from "./app/db.server";
+import prisma from "./app/db.server.js";
 
 async function main() {
   const customerId = "demo_customer";
