@@ -3,10 +3,10 @@ import { Outlet, useLoaderData, useRouteError } from "@remix-run/react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
-import { authenticate } from "../shopify.server";
+// import { authenticate } from "../shopify.server"; ❌ временно отключили
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  // await authenticate.admin(request); ❌ отключено
 
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };
