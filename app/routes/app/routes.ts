@@ -4,7 +4,6 @@ export default [
   route("/", "routes/index.tsx"),
 
   route("/app", "routes/app._index.tsx"),
-  route("/app/rewards", "routes/app/rewards.tsx"), // 👈 ВАЖНО
-
+  route("/app/rewards", "routes/app/rewards.tsx"),
   route("/test", "routes/app/test.tsx"),
 ];
