@@ -1,5 +1,4 @@
-import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData } from "react-router";
 import {
   Page,
   Card,
@@ -8,9 +7,9 @@ import {
 } from "@shopify/polaris";
 
 export const loader = async () => {
-  return json({
+  return {
     points: 123,
-  });
+  };
 };
 
 export default function RewardsPage() {

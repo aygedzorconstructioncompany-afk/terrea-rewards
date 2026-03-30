@@ -1,4 +1,4 @@
-import { json } from "@remix-run/node";
+import { data } from "react-router";
 import { prisma } from "~/db.server";
 
 export const loader = async ({ request }: { request: Request }) => {
@@ -9,10 +9,10 @@ export const loader = async ({ request }: { request: Request }) => {
 
     // 👉 если нет customerId
     if (!customerId) {
-      return json({
+      return {
         points: 0,
         transactions: [],
-      });
+      };
     }
 
     // 👉 ищем кошелек
@@ -39,15 +39,15 @@ export const loader = async ({ request }: { request: Request }) => {
       });
     }
 
-    return json({
+    return {
       points: wallet.balance,
       transactions: wallet.transactions,
-    });
+    };
 
   } catch (error) {
     console.error("API WALLET ERROR:", error);
 
-    return json(
+    return data(
       {
         error: "Internal Server Error",
       },
