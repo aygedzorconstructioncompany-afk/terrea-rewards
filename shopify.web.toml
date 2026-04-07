@@ -1,0 +1,10 @@
+name = "React Router"
+roles = ["frontend", "backend"]
+webhooks_path = "/webhooks/app/uninstalled"
+
+[dev]
+port = 5173
+
+[commands]
+predev = "npx prisma generate --schema=web/prisma/schema.prisma"
+dev = "npx prisma migrate deploy --schema=web/prisma/schema.prisma && npx react-router dev --config web/vite.config.js --port 5173"

@@ -1,0 +1,35 @@
+<div id="terrea-rewards-button">
+  🎁 Rewards
+</div>
+
+<div id="terrea-rewards-popup">
+  <div class="rewards-box">
+    <h3>🎁 Terrea Rewards</h3>
+    <div id="rewards-balance">Loading...</div>
+    <div id="rewards-history"></div>
+    <div id="rewards-redeem"></div>
+    <button onclick="closeRewards()">✕ Close</button>
+  </div>
+</div>
+
+<link rel="stylesheet" href="{{ 'rewards.css' | asset_url }}">
+
+<script>
+  {% if customer %}
+    window.terreaCustomerId = {{ customer.id }};
+    window.terreaShop = "{{ shop.permanent_domain }}";
+  {% else %}
+    window.terreaCustomerId = null;
+    window.terreaShop = null;
+  {% endif %}
+</script>
+
+<script src="{{ 'rewards.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Terrea Rewards",
+  "target": "body",
+  "settings": []
+}
+{% endschema %}

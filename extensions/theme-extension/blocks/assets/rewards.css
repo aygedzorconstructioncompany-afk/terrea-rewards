@@ -1,0 +1,60 @@
+#terrea-rewards-button {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 10px 20px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  z-index: 1000;
+  font-weight: bold;
+}
+
+#terrea-rewards-popup {
+  display: none;
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  z-index: 1001;
+}
+
+#terrea-rewards-popup.show {
+  display: block;
+}
+
+.rewards-box {
+  width: 300px;
+}
+
+.rewards-box h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+}
+
+.rewards-box button {
+  width: 100%;
+  padding: 10px;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.rewards-box button:hover {
+  background: #0056b3;
+}
+
+#rewards-balance {
+  padding: 15px 0;
+  font-size: 16px;
+  color: #333;
+}

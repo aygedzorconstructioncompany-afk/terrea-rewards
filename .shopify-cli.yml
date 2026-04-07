@@ -1,0 +1,6 @@
+node:
+  package_manager: npm
+
+app:
+  dev:
+    command: "npm run dev"

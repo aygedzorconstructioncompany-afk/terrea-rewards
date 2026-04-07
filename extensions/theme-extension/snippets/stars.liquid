@@ -1,0 +1,15 @@
+{%- assign full = rating | floor -%}
+{%- assign half = rating | minus: full -%}
+
+{%- for i in (1..full) -%}
+  ★
+{%- endfor -%}
+
+{%- if half >= 0.5 -%}
+  ⯪
+{%- endif -%}
+
+{%- assign remaining = 5 | minus: full | minus: half | ceil -%}
+{%- for i in (1..remaining) -%}
+  ☆
+{%- endfor -%}

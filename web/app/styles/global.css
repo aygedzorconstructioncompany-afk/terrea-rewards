@@ -1,0 +1,11 @@
+button {
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 9999;
+}
+
+/* на всякий случай против overlay */
+div, section {
+  pointer-events: auto;
+}
+
