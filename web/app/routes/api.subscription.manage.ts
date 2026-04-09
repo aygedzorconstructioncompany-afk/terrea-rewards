@@ -11,9 +11,18 @@ const corsHeaders = (request: any) => {
 };
 
 export async function action({ request }: any) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
-  }
+  if (!sub) {
+  sub = await prisma.subscription.create({
+    data: {
+      shop: shopId,
+      customerId: String(customer_id),
+      status: "active",
+      monthsActive: 0,
+      currentTier: "bronze",
+      pendingPoints: 0,
+    }
+  });
+}
 
   try {
     const { customer_id, shop, action: subAction } = await request.json();
