@@ -71,7 +71,7 @@ export const action = async ({ request }: any) => {
         const monthDiff = (curY - lastY) * 12 + (curM - lastM);
 
         if (monthDiff > 1) {
-          console.log(`⚠️ Subscription reset for ${customerId} — skipped ${monthDiff - 1} month(s)`);
+          console.log(`⚠️ Subscription reset for ${customerId}`);
           monthsActive = 1;
           pendingPoints = 0;
         } else {
@@ -98,51 +98,137 @@ export const action = async ({ request }: any) => {
       sub = { ...sub, monthsActive, currentTier, pendingPoints };
     }
 
+    // ================================
+    // 💰 НАЧИСЛЕНИЕ БАЛЛОВ по ТЗ Ольги
+    // Мес 1-3 → 10% копятся → начисляются в мес 4
+    // Мес 4-6 → 15% копятся → начисляются в мес 7
+    // Мес 7-9 → 20% копятся → начисляются в мес 10
+    // Мес 10+ → 20% начисляются сразу
+    // ================================
     let earnedPoints = 0;
     let pointsDescription = "";
 
     if (sub.monthsActive <= 3) {
+      // Мес 1-3 — копятся 10%
       const pending = Math.floor(subtotalPrice * 0.10);
       const newPending = sub.pendingPoints + pending;
-
       await prisma.subscription.update({
         where: { id: sub.id },
         data: { pendingPoints: newPending },
       });
-
       await prisma.pointsTransaction.create({
         data: {
-          walletId: wallet.id,
-          shop,
-          customerId,
-          orderId,
-          type: "earn_pending",
-          amount: pending,
-          description: `Month ${sub.monthsActive}/3 — points pending (10%): +${pending} pts`,
+          walletId: wallet.id, shop, customerId, orderId,
+          type: "earn_pending", amount: pending,
+          description: `Month ${sub.monthsActive}/3 — pending (10%): +${pending} pts`,
           expiresAt,
         },
       });
-
-      console.log(`⏳ Pending points +${pending} (month ${sub.monthsActive}/3) for ${customerId}`);
+      await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { totalSpent: { increment: totalPrice } },
+      });
+      console.log(`⏳ Pending +${pending} (month ${sub.monthsActive}/3)`);
 
     } else if (sub.monthsActive === 4) {
+      // Мес 4 — начисляем все pending за 1-3, копим 15%
       const pending = sub.pendingPoints;
-      const currentBonus = Math.floor(subtotalPrice * 0.15);
-      earnedPoints = pending + currentBonus;
-      pointsDescription = `Silver tier unlocked! Pending pts +${pending} + 15% bonus +${currentBonus}`;
+      earnedPoints = pending;
+      pointsDescription = `Months 1-3 reward! +${pending} pts (10%)`;
+      const newPending = Math.floor(subtotalPrice * 0.15);
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { pendingPoints: newPending },
+      });
+      await prisma.pointsTransaction.create({
+        data: {
+          walletId: wallet.id, shop, customerId, orderId,
+          type: "earn_pending", amount: newPending,
+          description: `Month 4/6 — pending (15%): +${newPending} pts`,
+          expiresAt,
+        },
+      });
+      console.log(`⏳ Pending +${newPending} (month 4/6)`);
 
+    } else if (sub.monthsActive >= 5 && sub.monthsActive <= 6) {
+      // Мес 5-6 — копятся 15%
+      const pending = Math.floor(subtotalPrice * 0.15);
+      const newPending = sub.pendingPoints + pending;
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { pendingPoints: newPending },
+      });
+      await prisma.pointsTransaction.create({
+        data: {
+          walletId: wallet.id, shop, customerId, orderId,
+          type: "earn_pending", amount: pending,
+          description: `Month ${sub.monthsActive}/6 — pending (15%): +${pending} pts`,
+          expiresAt,
+        },
+      });
+      await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { totalSpent: { increment: totalPrice } },
+      });
+      console.log(`⏳ Pending +${pending} (month ${sub.monthsActive}/6)`);
+
+    } else if (sub.monthsActive === 7) {
+      // Мес 7 — начисляем все pending за 4-6, копим 20%
+      const pending = sub.pendingPoints;
+      earnedPoints = pending;
+      pointsDescription = `Months 4-6 reward! +${pending} pts (15%)`;
+      const newPending = Math.floor(subtotalPrice * 0.20);
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { pendingPoints: newPending },
+      });
+      await prisma.pointsTransaction.create({
+        data: {
+          walletId: wallet.id, shop, customerId, orderId,
+          type: "earn_pending", amount: newPending,
+          description: `Month 7/9 — pending (20%): +${newPending} pts`,
+          expiresAt,
+        },
+      });
+      console.log(`⏳ Pending +${newPending} (month 7/9)`);
+
+    } else if (sub.monthsActive >= 8 && sub.monthsActive <= 9) {
+      // Мес 8-9 — копятся 20%
+      const pending = Math.floor(subtotalPrice * 0.20);
+      const newPending = sub.pendingPoints + pending;
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { pendingPoints: newPending },
+      });
+      await prisma.pointsTransaction.create({
+        data: {
+          walletId: wallet.id, shop, customerId, orderId,
+          type: "earn_pending", amount: pending,
+          description: `Month ${sub.monthsActive}/9 — pending (20%): +${pending} pts`,
+          expiresAt,
+        },
+      });
+      await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { totalSpent: { increment: totalPrice } },
+      });
+      console.log(`⏳ Pending +${pending} (month ${sub.monthsActive}/9)`);
+
+    } else if (sub.monthsActive === 10) {
+      // Мес 10 — начисляем все pending за 7-9 + сразу 20%
+      const pending = sub.pendingPoints;
+      const currentBonus = Math.floor(subtotalPrice * 0.20);
+      earnedPoints = pending + currentBonus;
+      pointsDescription = `Months 7-9 reward! +${pending} pts + 20% bonus +${currentBonus} pts`;
       await prisma.subscription.update({
         where: { id: sub.id },
         data: { pendingPoints: 0 },
       });
 
-    } else if (sub.monthsActive >= 5 && sub.monthsActive <= 6) {
-      earnedPoints = Math.floor(subtotalPrice * 0.15);
-      pointsDescription = `Silver tier — 15% reward: +${earnedPoints} pts`;
-
     } else {
+      // Мес 10+ — сразу 20%
       earnedPoints = Math.floor(subtotalPrice * 0.20);
-      pointsDescription = `Gold tier — 20% reward: +${earnedPoints} pts`;
+      pointsDescription = `Gold tier — 20%: +${earnedPoints} pts`;
     }
 
     if (earnedPoints > 0) {
@@ -156,26 +242,19 @@ export const action = async ({ request }: any) => {
         }),
         prisma.pointsTransaction.create({
           data: {
-            walletId: wallet.id,
-            shop,
-            customerId,
-            orderId,
-            type: "earn",
-            amount: earnedPoints,
+            walletId: wallet.id, shop, customerId, orderId,
+            type: "earn", amount: earnedPoints,
             description: pointsDescription || "Order reward",
             expiresAt,
           },
         }),
       ]);
-
-      console.log(`✅ Points added: +${earnedPoints} for ${customerId} (${sub.currentTier})`);
-    } else if (sub.monthsActive <= 3) {
-      await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { totalSpent: { increment: totalPrice } },
-      });
+      console.log(`✅ Points added: +${earnedPoints} for ${customerId}`);
     }
 
+    // ================================
+    // 🎁 РЕФЕРАЛЬНАЯ СИСТЕМА
+    // ================================
     if (wallet.referredBy) {
       const referrerWallet = await prisma.wallet.findFirst({
         where: { customerId: wallet.referredBy, shop },
@@ -201,12 +280,9 @@ export const action = async ({ request }: any) => {
           }),
           prisma.pointsTransaction.create({
             data: {
-              walletId: referrerWallet.id,
-              shop,
+              walletId: referrerWallet.id, shop,
               customerId: referrerWallet.customerId,
-              orderId,
-              type: "referral",
-              amount: referralBonus,
+              orderId, type: "referral", amount: referralBonus,
               description: isFirstOrder
                 ? `Referral bonus 15% from first order of ${customerId}`
                 : `Referral bonus 5% from order of ${customerId}`,
@@ -226,7 +302,6 @@ export const action = async ({ request }: any) => {
             },
           }),
         ]);
-
         console.log(`🎁 Referral bonus +${referralBonus} to ${referrerWallet.customerId}`);
       }
     }
