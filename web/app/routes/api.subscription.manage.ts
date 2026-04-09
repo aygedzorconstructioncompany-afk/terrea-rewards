@@ -11,18 +11,9 @@ const corsHeaders = (request: any) => {
 };
 
 export async function action({ request }: any) {
-  if (!sub) {
-  sub = await prisma.subscription.create({
-    data: {
-      shop: shopId,
-      customerId: String(customer_id),
-      status: "active",
-      monthsActive: 0,
-      currentTier: "bronze",
-      pendingPoints: 0,
-    }
-  });
-}
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(request) });
+  }
 
   try {
     const { customer_id, shop, action: subAction } = await request.json();
@@ -32,12 +23,21 @@ export async function action({ request }: any) {
       return Response.json({ error: "Missing data" }, { status: 400, headers: corsHeaders(request) });
     }
 
-    const sub = await prisma.subscription.findFirst({
+    let sub = await prisma.subscription.findFirst({
       where: { shop: shopId, customerId: String(customer_id) }
     });
 
     if (!sub) {
-      return Response.json({ error: "Subscription not found" }, { status: 404, headers: corsHeaders(request) });
+      sub = await prisma.subscription.create({
+        data: {
+          shop: shopId,
+          customerId: String(customer_id),
+          status: "active",
+          monthsActive: 0,
+          currentTier: "bronze",
+          pendingPoints: 0,
+        }
+      });
     }
 
     if (subAction === "pause") {
