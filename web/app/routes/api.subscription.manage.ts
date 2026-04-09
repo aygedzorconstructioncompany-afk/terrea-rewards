@@ -10,6 +10,10 @@ const corsHeaders = (request: any) => {
   };
 };
 
+export async function loader({ request }: any) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
+}
+
 export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
