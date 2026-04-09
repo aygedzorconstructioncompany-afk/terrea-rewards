@@ -9,6 +9,7 @@ dev_command = "npm run dev"
 
 [webhooks]
 api_version = "2024-01"
+
   [[webhooks.subscriptions]]
   topics = [ "orders/paid" ]
   uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/paid"
@@ -30,6 +31,6 @@ use_legacy_install_flow = false
 redirect_urls = [ "https://terrea-rewards-1.onrender.com/auth/callback" ]
 
 [app_proxy]
-url = "https://unspiral-alanna-reusable.ngrok-free.dev"
+url = "https://terrea-rewards-1.onrender.com"
 subpath = "proxy"
 prefix = "apps"
