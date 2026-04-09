@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Wallet {
@@ -76,7 +76,6 @@ model Referral {
   totalBonus      Int       @default(0)
   createdAt       DateTime  @default(now())
   completedAt     DateTime?
-
   @@index([referrerId])
   @@index([refereeId])
 }
@@ -85,15 +84,14 @@ model Subscription {
   id              String    @id @default(cuid())
   shop            String
   customerId      String
-  status          String    @default("active") // active, paused, cancelled
+  status          String    @default("active")
   startedAt       DateTime  @default(now())
   lastOrderAt     DateTime?
   monthsActive    Int       @default(0)
-  currentTier     String    @default("bronze") // bronze(10%), silver(15%), gold(20%)
-  pendingPoints   Int       @default(0) // копятся первые 3 мес
-  lastBillingMonth String?  // "2026-04" формат
+  currentTier     String    @default("bronze")
+  pendingPoints   Int       @default(0)
+  lastBillingMonth String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-
   @@unique([shop, customerId])
 }
