@@ -18,4 +18,5 @@ export default [
   route("/webhooks/subscriptions/create", "./routes/webhooks.subscriptions.create.ts"),
   route("/webhooks/subscriptions/billing", "./routes/webhooks.subscriptions.billing.ts"),
   route("/api/webhooks/register", "./routes/api.webhooks.register.ts"),
+  route("/api/admin/test", "./routes/api.admin.test.ts"),
 ] satisfies RouteConfig;
