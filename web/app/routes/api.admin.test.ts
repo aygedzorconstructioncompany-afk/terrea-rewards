@@ -1,7 +1,5 @@
 import type { LoaderFunctionArgs } from "react-router";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import db from "../db.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
@@ -20,12 +18,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const date = new Date();
   date.setMonth(date.getMonth() - months);
 
-  await prisma.customer.updateMany({
+  await db.customer.updateMany({
     where: { email },
     data: { subscriptionStartDate: date, monthsActive: months }
   });
 
-  const customer = await prisma.customer.findFirst({ where: { email } });
+  const customer = await db.customer.findFirst({ where: { email } });
 
   return new Response(JSON.stringify({ success: true, email, months, customer }), {
     headers: { "Content-Type": "application/json" }
