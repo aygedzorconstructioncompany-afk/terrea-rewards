@@ -10,6 +10,8 @@ export default [
   route("/api/referral/generate", "./routes/api.referral.generate.ts"),
   route("/api/referral/apply", "./routes/api.referral.apply.ts"),
   route("/webhooks/orders/create", "./routes/webhooks.orders.create.ts"),
+  route("/webhooks/app/uninstalled", "./routes/webhooks.app.uninstalled.ts"),
+  route("/webhooks/orders/paid", "./routes/webhooks.orders.paid.ts"),
   route("/api/subscription", "./routes/api.subscription.ts"),
   route("/api/subscription/manage", "./routes/api.subscription.manage.ts"),
   route("/api/points/expire", "./routes/api.points.expire.ts"),
