@@ -20,7 +20,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   try {
     const sub = await prisma.subscription.upsert({
-      where: { customerId_shop: { customerId: email, shop: "terrea-dev-store.myshopify.com" } },
+      where: { shop_customerId: { customerId: email, shop: "terrea-dev-store.myshopify.com" } },
       create: {
         customerId: email,
         shop: "terrea-dev-store.myshopify.com",
