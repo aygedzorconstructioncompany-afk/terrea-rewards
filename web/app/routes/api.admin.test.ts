@@ -19,13 +19,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
   date.setMonth(date.getMonth() - months);
 
   try {
-    await prisma.subscription.updateMany({
-      where: { customerId: email },
-      data: { startedAt: date, monthsActive: months }
-    });
-
-    const sub = await prisma.subscription.findFirst({
-      where: { customerId: email }
+    const sub = await prisma.subscription.upsert({
+      where: { customerId_shop: { customerId: email, shop: "terrea-dev-store.myshopify.com" } },
+      create: {
+        customerId: email,
+        shop: "terrea-dev-store.myshopify.com",
+        startedAt: date,
+        monthsActive: months,
+        status: "active",
+        currentTier: months >= 10 ? "gold" : months >= 7 ? "silver" : months >= 4 ? "silver" : "bronze",
+        pendingPoints: 0,
+      },
+      update: {
+        startedAt: date,
+        monthsActive: months,
+        currentTier: months >= 10 ? "gold" : months >= 7 ? "silver" : months >= 4 ? "silver" : "bronze",
+      }
     });
 
     return new Response(JSON.stringify({ success: true, email, months, sub }), {
