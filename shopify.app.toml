@@ -9,21 +9,24 @@ dev_command = "npm run dev"
 
 [webhooks]
 api_version = "2024-01"
-
   [[webhooks.subscriptions]]
   topics = [ "orders/paid" ]
   uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/paid"
-
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
   uri = "https://terrea-rewards-1.onrender.com/webhooks/app/uninstalled"
-
   [[webhooks.subscriptions]]
   topics = [ "orders/create" ]
   uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/create"
+  [[webhooks.subscriptions]]
+  topics = [ "subscription_contracts/create" ]
+  uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/create"
+  [[webhooks.subscriptions]]
+  topics = [ "subscription_billing_attempts/success" ]
+  uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/billing"
 
 [access_scopes]
-scopes = "read_customers,write_customers,write_discounts,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_orders"
+scopes = "read_customers,write_customers,write_discounts,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_orders,write_orders,read_own_subscription_contracts,write_own_subscription_contracts"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
