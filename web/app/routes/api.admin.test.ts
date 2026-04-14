@@ -18,6 +18,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const date = new Date();
   date.setMonth(date.getMonth() - months);
 
+  const currentTier = months >= 10 ? "belong+" : months >= 7 ? "belong" : months >= 4 ? "stay" : "start";
+
   try {
     const sub = await prisma.subscription.upsert({
       where: { shop_customerId: { customerId: customerId, shop: "terrea-dev-store.myshopify.com" } },
@@ -27,14 +29,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         startedAt: date,
         monthsActive: months,
         status: "active",
-        currentTier: months >= 10 ? "gold" : months >= 7 ? "silver" : months >= 4 ? "silver" : "bronze",
+        currentTier: currentTier,
         pendingPoints: 0,
       },
       update: {
         startedAt: date,
         monthsActive: months,
         status: "active",
-        currentTier: months >= 10 ? "gold" : months >= 7 ? "silver" : months >= 4 ? "silver" : "bronze",
+        currentTier: currentTier,
       }
     });
 
