@@ -3,7 +3,7 @@ import prisma from "../db.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const email = url.searchParams.get("email");
+  const customerId = url.searchParams.get("customer_id");
   const months = parseInt(url.searchParams.get("months") || "0");
   const secret = url.searchParams.get("secret");
 
@@ -11,8 +11,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
 
-  if (!email || !months) {
-    return new Response(JSON.stringify({ error: "email and months required" }), { status: 400 });
+  if (!customerId || !months) {
+    return new Response(JSON.stringify({ error: "customer_id and months required" }), { status: 400 });
   }
 
   const date = new Date();
@@ -20,9 +20,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   try {
     const sub = await prisma.subscription.upsert({
-      where: { shop_customerId: { customerId: email, shop: "terrea-dev-store.myshopify.com" } },
+      where: { shop_customerId: { customerId: customerId, shop: "terrea-dev-store.myshopify.com" } },
       create: {
-        customerId: email,
+        customerId: customerId,
         shop: "terrea-dev-store.myshopify.com",
         startedAt: date,
         monthsActive: months,
@@ -33,11 +33,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       update: {
         startedAt: date,
         monthsActive: months,
+        status: "active",
         currentTier: months >= 10 ? "gold" : months >= 7 ? "silver" : months >= 4 ? "silver" : "bronze",
       }
     });
 
-    return new Response(JSON.stringify({ success: true, email, months, sub }), {
+    return new Response(JSON.stringify({ success: true, customerId, months, sub }), {
       headers: { "Content-Type": "application/json" }
     });
   } catch (e: any) {
