@@ -11,16 +11,17 @@ const corsHeaders = (request: Request) => {
   };
 };
 
-// GET /api/redeem?customer_id=xxx&shop=xxx
-// Возвращает текущий баланс кошелька
+// GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
+// Возвращает баланс и максимум доступный к списанию
 export async function loader({ request }: LoaderFunctionArgs) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
-  const url = new URL(request.url);
+  const url        = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-  const shop = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+  const shop       = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+  const orderTotal = parseFloat(url.searchParams.get("order_total") || "0");
 
   if (!customerId) {
     return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
@@ -28,7 +29,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
   try {
     const wallet = await prisma.wallet.findUnique({
-      where: { shop_customer: { shop, customerId } },
+      where:   { shop_customer: { shop, customerId } },
       include: {
         transactions: {
           orderBy: { createdAt: "desc" },
@@ -39,22 +40,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     if (!wallet) {
       return Response.json({
-        balance: 0,
+        balance:    0,
+        maxRedeem:  0,
         totalSpent: 0,
-        tier: "start",
+        tier:       "start",
         transactions: [],
       }, { headers: corsHeaders(request) });
     }
 
+    // Максимум 50% от суммы заказа
+    const maxRedeem = orderTotal > 0
+      ? Math.min(wallet.balance, Math.floor(orderTotal * 0.5))
+      : wallet.balance;
+
     return Response.json({
-      balance: wallet.balance,
+      balance:    wallet.balance,
+      maxRedeem,                    // ← сколько максимум можно списать
       totalSpent: wallet.totalSpent,
-      tier: wallet.tier,
+      tier:       wallet.tier,
       transactions: wallet.transactions.map(t => ({
-        type: t.type,
-        amount: t.amount,
+        type:        t.type,
+        amount:      t.amount,
         description: t.description,
-        createdAt: t.createdAt,
+        createdAt:   t.createdAt,
       })),
     }, { headers: corsHeaders(request) });
 
@@ -64,8 +72,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 // POST /api/redeem
-// Тело: { customer_id, shop, order_id, order_total }
-// Применяет накопленный баланс как скидку к заказу
+// Тело: { customer_id, shop, order_id, order_total, redeem_amount }
+// redeem_amount — сколько покупатель хочет списать (от 0 до maxRedeem)
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -78,10 +86,27 @@ export async function action({ request }: ActionFunctionArgs) {
     return Response.json({ error: "Bad JSON" }, { status: 400, headers: corsHeaders(request) });
   }
 
-  const { customer_id: customerId, shop = "terrea-dev-store.myshopify.com", order_id: orderId, order_total: orderTotal } = body;
+  const {
+    customer_id: customerId,
+    shop        = "terrea-dev-store.myshopify.com",
+    order_id:    orderId,
+    order_total: orderTotal,
+    redeem_amount: redeemAmount, // сколько хочет списать покупатель
+  } = body;
 
-  if (!customerId || !orderId) {
-    return Response.json({ error: "Missing customer_id or order_id" }, { status: 400, headers: corsHeaders(request) });
+  if (!customerId || !orderId || !orderTotal) {
+    return Response.json(
+      { error: "Missing customer_id, order_id or order_total" },
+      { status: 400, headers: corsHeaders(request) }
+    );
+  }
+
+  if (!redeemAmount || redeemAmount <= 0) {
+    return Response.json({
+      success: true,
+      redeemed: 0,
+      message: "Nothing to redeem",
+    }, { headers: corsHeaders(request) });
   }
 
   try {
@@ -90,35 +115,39 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     if (!wallet || wallet.balance <= 0) {
-      return Response.json({
-        success: true,
-        redeemed: 0,
-        newBalance: 0,
-        message: "No balance to redeem",
-      }, { headers: corsHeaders(request) });
+      return Response.json(
+        { error: "No balance" },
+        { status: 400, headers: corsHeaders(request) }
+      );
     }
 
-    // Максимум списываем весь баланс (но не больше суммы заказа)
-    const maxRedeem = orderTotal ? Math.min(wallet.balance, Math.floor(orderTotal)) : wallet.balance;
-    const toRedeem = maxRedeem;
+    // Проверка: не больше баланса и не больше 50% от заказа
+    const maxAllowed = Math.min(wallet.balance, Math.floor(orderTotal * 0.5));
+    const toRedeem   = Math.min(redeemAmount, maxAllowed);
 
-    // Применить через Shopify Admin API
+    if (toRedeem <= 0) {
+      return Response.json(
+        { error: "Redeem amount exceeds limit (max 50% of order total)" },
+        { status: 400, headers: corsHeaders(request) }
+      );
+    }
+
+    // Применить скидку через Shopify Admin API
     const applied = await applyShopifyDiscount(shop, orderId, toRedeem);
 
     if (!applied) {
-      return Response.json({
-        success: false,
-        error: "Failed to apply discount via Shopify API",
-      }, { status: 500, headers: corsHeaders(request) });
+      return Response.json(
+        { error: "Failed to apply discount via Shopify API" },
+        { status: 500, headers: corsHeaders(request) }
+      );
     }
 
     // Списать с баланса
     await prisma.wallet.update({
       where: { shop_customer: { shop, customerId } },
-      data: { balance: { decrement: toRedeem } },
+      data:  { balance: { decrement: toRedeem } },
     });
 
-    // Записать транзакцию
     await prisma.pointsTransaction.create({
       data: {
         walletId:    wallet.id,
@@ -127,15 +156,15 @@ export async function action({ request }: ActionFunctionArgs) {
         orderId,
         type:        "redeemed",
         amount:      -toRedeem,
-        description: `Автосписание кэшбэка ${toRedeem} pts к заказу`,
+        description: `Списание ${toRedeem} pts к заказу (выбрано покупателем)`,
       },
     });
 
     return Response.json({
-      success: true,
-      redeemed: toRedeem,
+      success:    true,
+      redeemed:   toRedeem,
       newBalance: wallet.balance - toRedeem,
-      message: `Списано ${toRedeem} pts`,
+      message:    `Списано ${toRedeem} pts`,
     }, { headers: corsHeaders(request) });
 
   } catch (e: any) {
@@ -143,36 +172,30 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-// ─── Shopify Admin API — применить скидку к заказу ────────────────────────────
+// ─── Shopify Admin API ────────────────────────────────────────────────────────
 async function applyShopifyDiscount(shop: string, orderId: string, amount: number): Promise<boolean> {
   try {
     const session = await prisma.session.findFirst({
       where: { shop, isOnline: false },
     });
-
-    if (!session?.accessToken) {
-      // Попробовать из env
-      const token = process.env.SHOPIFY_ACCESS_TOKEN;
-      if (!token) {
-        console.error("[redeem] No access token found");
-        return false;
-      }
+    const token = session?.accessToken || process.env.SHOPIFY_ACCESS_TOKEN;
+    if (!token) {
+      console.error("[redeem] No access token");
+      return false;
     }
-
-    const token = session?.accessToken || process.env.SHOPIFY_ACCESS_TOKEN!;
 
     const response = await fetch(
       `https://${shop}/admin/api/2024-01/orders/${orderId}/adjustments.json`,
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type":           "application/json",
           "X-Shopify-Access-Token": token,
         },
         body: JSON.stringify({
           order_adjustment: {
             kind:       "refund_discrepancy",
-            reason:     `Terrea Rewards кэшбэк — ${amount} pts`,
+            reason:     `Terrea Rewards — ${amount} pts`,
             amount:     `-${amount}.00`,
             tax_amount: "0.00",
           },
@@ -181,14 +204,12 @@ async function applyShopifyDiscount(shop: string, orderId: string, amount: numbe
     );
 
     if (!response.ok) {
-      const err = await response.text();
-      console.error("[redeem] Shopify API error:", err);
+      console.error("[redeem] Shopify error:", await response.text());
       return false;
     }
 
-    console.log(`[redeem] ✅ Applied ${amount} pts discount to order ${orderId}`);
+    console.log(`[redeem] ✅ Discount ${amount} applied to order ${orderId}`);
     return true;
-
   } catch (e: any) {
     console.error("[redeem] Exception:", e.message);
     return false;
