@@ -12,7 +12,6 @@ const corsHeaders = (request: Request) => {
 };
 
 // GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
-// Возвращает баланс и максимум доступный к списанию
 export async function loader({ request }: LoaderFunctionArgs) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -40,29 +39,21 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     if (!wallet) {
       return Response.json({
-        balance:    0,
-        maxRedeem:  0,
-        totalSpent: 0,
-        tier:       "start",
-        transactions: [],
+        balance: 0, maxRedeem: 0, totalSpent: 0, tier: "start", transactions: [],
       }, { headers: corsHeaders(request) });
     }
 
-    // Максимум 50% от суммы заказа
     const maxRedeem = orderTotal > 0
       ? Math.min(wallet.balance, Math.floor(orderTotal * 0.5))
       : wallet.balance;
 
     return Response.json({
       balance:    wallet.balance,
-      maxRedeem,                    // ← сколько максимум можно списать
+      maxRedeem,
       totalSpent: wallet.totalSpent,
       tier:       wallet.tier,
       transactions: wallet.transactions.map(t => ({
-        type:        t.type,
-        amount:      t.amount,
-        description: t.description,
-        createdAt:   t.createdAt,
+        type: t.type, amount: t.amount, description: t.description, createdAt: t.createdAt,
       })),
     }, { headers: corsHeaders(request) });
 
@@ -72,8 +63,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 }
 
 // POST /api/redeem
-// Тело: { customer_id, shop, order_id, order_total, redeem_amount }
-// redeem_amount — сколько покупатель хочет списать (от 0 до maxRedeem)
+// Тело: { customer_id, shop, order_total, redeem_amount, order_id? }
 export async function action({ request }: ActionFunctionArgs) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -87,25 +77,24 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const {
-    customer_id: customerId,
-    shop        = "terrea-dev-store.myshopify.com",
-    order_id:    orderId,
-    order_total: orderTotal,
-    redeem_amount: redeemAmount, // сколько хочет списать покупатель
+    customer_id:   customerId,
+    shop         = "terrea-dev-store.myshopify.com",
+    order_id:      orderId,
+    order_total:   orderTotal,
+    redeem_amount: redeemAmount,
   } = body;
 
-  if (!customerId || !orderId || !orderTotal) {
+  // ← order_id больше не обязателен
+  if (!customerId || !orderTotal) {
     return Response.json(
-      { error: "Missing customer_id, order_id or order_total" },
+      { error: "Missing customer_id or order_total" },
       { status: 400, headers: corsHeaders(request) }
     );
   }
 
   if (!redeemAmount || redeemAmount <= 0) {
     return Response.json({
-      success: true,
-      redeemed: 0,
-      message: "Nothing to redeem",
+      success: true, redeemed: 0, message: "Nothing to redeem",
     }, { headers: corsHeaders(request) });
   }
 
@@ -121,7 +110,6 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    // Проверка: не больше баланса и не больше 50% от заказа
     const maxAllowed = Math.min(wallet.balance, Math.floor(orderTotal * 0.5));
     const toRedeem   = Math.min(redeemAmount, maxAllowed);
 
@@ -132,33 +120,26 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     }
 
-    // Применить скидку через Shopify Admin API
-    const applied = await applyShopifyDiscount(shop, orderId, toRedeem);
-
-    if (!applied) {
-      return Response.json(
-        { error: "Failed to apply discount via Shopify API" },
-        { status: 500, headers: corsHeaders(request) }
-      );
-    }
-
     // Списать с баланса
     await prisma.wallet.update({
       where: { shop_customer: { shop, customerId } },
       data:  { balance: { decrement: toRedeem } },
     });
 
+    // Записать транзакцию
     await prisma.pointsTransaction.create({
       data: {
         walletId:    wallet.id,
         shop,
         customerId,
-        orderId,
+        orderId:     orderId || ("manual-" + Date.now()),
         type:        "redeemed",
         amount:      -toRedeem,
-        description: `Списание ${toRedeem} pts к заказу (выбрано покупателем)`,
+        description: `Списание ${toRedeem} pts (выбрано покупателем)`,
       },
     });
+
+    console.log(`[redeem] ✅ ${toRedeem} pts redeemed for ${customerId}`);
 
     return Response.json({
       success:    true,
@@ -169,49 +150,5 @@ export async function action({ request }: ActionFunctionArgs) {
 
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
-  }
-}
-
-// ─── Shopify Admin API ────────────────────────────────────────────────────────
-async function applyShopifyDiscount(shop: string, orderId: string, amount: number): Promise<boolean> {
-  try {
-    const session = await prisma.session.findFirst({
-      where: { shop, isOnline: false },
-    });
-    const token = session?.accessToken || process.env.SHOPIFY_ACCESS_TOKEN;
-    if (!token) {
-      console.error("[redeem] No access token");
-      return false;
-    }
-
-    const response = await fetch(
-      `https://${shop}/admin/api/2024-01/orders/${orderId}/adjustments.json`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type":           "application/json",
-          "X-Shopify-Access-Token": token,
-        },
-        body: JSON.stringify({
-          order_adjustment: {
-            kind:       "refund_discrepancy",
-            reason:     `Terrea Rewards — ${amount} pts`,
-            amount:     `-${amount}.00`,
-            tax_amount: "0.00",
-          },
-        }),
-      }
-    );
-
-    if (!response.ok) {
-      console.error("[redeem] Shopify error:", await response.text());
-      return false;
-    }
-
-    console.log(`[redeem] ✅ Discount ${amount} applied to order ${orderId}`);
-    return true;
-  } catch (e: any) {
-    console.error("[redeem] Exception:", e.message);
-    return false;
   }
 }
