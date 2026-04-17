@@ -1,7 +1,6 @@
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import prisma from "../db.server";
 
-const corsHeaders = (request: Request) => {
+const corsHeaders = (request: any) => {
   const origin = request.headers.get("Origin") || "*";
   return {
     "Access-Control-Allow-Origin": origin,
@@ -11,8 +10,17 @@ const corsHeaders = (request: Request) => {
   };
 };
 
+const json = (data: any, status = 200, request?: any) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...(request ? corsHeaders(request) : {}),
+    },
+  });
+
 // GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
-export async function loader({ request }: LoaderFunctionArgs) {
+export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
@@ -23,7 +31,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const orderTotal = parseFloat(url.searchParams.get("order_total") || "0");
 
   if (!customerId) {
-    return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
+    return json({ error: "No customer_id" }, 400, request);
   }
 
   try {
@@ -38,33 +46,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
     });
 
     if (!wallet) {
-      return Response.json({
-        balance: 0, maxRedeem: 0, totalSpent: 0, tier: "start", transactions: [],
-      }, { headers: corsHeaders(request) });
+      return json({ balance: 0, maxRedeem: 0, totalSpent: 0, tier: "start", transactions: [] }, 200, request);
     }
 
     const maxRedeem = orderTotal > 0
       ? Math.min(wallet.balance, Math.floor(orderTotal * 0.5))
       : wallet.balance;
 
-    return Response.json({
+    return json({
       balance:    wallet.balance,
       maxRedeem,
       totalSpent: wallet.totalSpent,
       tier:       wallet.tier,
-      transactions: wallet.transactions.map(t => ({
+      transactions: wallet.transactions.map((t: any) => ({
         type: t.type, amount: t.amount, description: t.description, createdAt: t.createdAt,
       })),
-    }, { headers: corsHeaders(request) });
+    }, 200, request);
 
   } catch (e: any) {
-    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
+    return json({ error: e.message }, 500, request);
   }
 }
 
 // POST /api/redeem
 // Тело: { customer_id, shop, order_total, redeem_amount, order_id? }
-export async function action({ request }: ActionFunctionArgs) {
+export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
@@ -73,7 +79,7 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     body = await request.json();
   } catch {
-    return Response.json({ error: "Bad JSON" }, { status: 400, headers: corsHeaders(request) });
+    return json({ error: "Bad JSON" }, 400, request);
   }
 
   const {
@@ -84,18 +90,12 @@ export async function action({ request }: ActionFunctionArgs) {
     redeem_amount: redeemAmount,
   } = body;
 
-  // ← order_id больше не обязателен
   if (!customerId || !orderTotal) {
-    return Response.json(
-      { error: "Missing customer_id or order_total" },
-      { status: 400, headers: corsHeaders(request) }
-    );
+    return json({ error: "Missing customer_id or order_total" }, 400, request);
   }
 
   if (!redeemAmount || redeemAmount <= 0) {
-    return Response.json({
-      success: true, redeemed: 0, message: "Nothing to redeem",
-    }, { headers: corsHeaders(request) });
+    return json({ success: true, redeemed: 0, message: "Nothing to redeem" }, 200, request);
   }
 
   try {
@@ -104,20 +104,14 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     if (!wallet || wallet.balance <= 0) {
-      return Response.json(
-        { error: "No balance" },
-        { status: 400, headers: corsHeaders(request) }
-      );
+      return json({ error: "No balance" }, 400, request);
     }
 
     const maxAllowed = Math.min(wallet.balance, Math.floor(orderTotal * 0.5));
     const toRedeem   = Math.min(redeemAmount, maxAllowed);
 
     if (toRedeem <= 0) {
-      return Response.json(
-        { error: "Redeem amount exceeds limit (max 50% of order total)" },
-        { status: 400, headers: corsHeaders(request) }
-      );
+      return json({ error: "Redeem amount exceeds limit (max 50% of order total)" }, 400, request);
     }
 
     // Списать с баланса
@@ -141,14 +135,14 @@ export async function action({ request }: ActionFunctionArgs) {
 
     console.log(`[redeem] ✅ ${toRedeem} pts redeemed for ${customerId}`);
 
-    return Response.json({
+    return json({
       success:    true,
       redeemed:   toRedeem,
       newBalance: wallet.balance - toRedeem,
       message:    `Списано ${toRedeem} pts`,
-    }, { headers: corsHeaders(request) });
+    }, 200, request);
 
   } catch (e: any) {
-    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
+    return json({ error: e.message }, 500, request);
   }
 }
