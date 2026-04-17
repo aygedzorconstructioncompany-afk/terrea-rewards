@@ -1,5 +1,4 @@
 import { type RouteConfig, route } from "@react-router/dev/routes";
-
 export default [
   route("/app/rewards", "./routes/app.rewards.jsx"),
   route("/api/redeem", "./routes/api.redeem.ts"),
@@ -21,4 +20,5 @@ export default [
   route("/webhooks/subscriptions/billing", "./routes/webhooks.subscriptions.billing.ts"),
   route("/api/webhooks/register", "./routes/api.webhooks.register.ts"),
   route("/api/admin/test", "./routes/api.admin.test.ts"),
+  route("/api/cron/update-months", "./routes/api.cron.update-months.ts"),
 ] satisfies RouteConfig;
