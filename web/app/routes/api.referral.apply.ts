@@ -5,10 +5,24 @@ const corsHeaders = (request: any) => {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, ngrok-skip-browser-warning",
     "Access-Control-Allow-Credentials": "true",
   };
 };
+
+const json = (data: any, status = 200, request?: any) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...(request ? corsHeaders(request) : {}),
+    },
+  });
+
+// OPTIONS preflight
+export async function loader({ request }: any) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
+}
 
 export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
@@ -20,30 +34,30 @@ export async function action({ request }: any) {
     const shopId = shop || "terrea-dev-store.myshopify.com";
 
     if (!customer_id || !code) {
-      return Response.json({ error: "Missing data" }, { status: 400, headers: corsHeaders(request) });
+      return json({ error: "Missing data" }, 400, request);
     }
 
-    // Find referrer wallet by code
+    // Найти реферрера по коду
     const referrerWallet = await prisma.wallet.findFirst({
       where: { referralCode: code, shop: shopId },
     });
 
     if (!referrerWallet) {
-      return Response.json({ error: "Invalid referral code" }, { status: 404, headers: corsHeaders(request) });
+      return json({ error: "Invalid referral code" }, 404, request);
     }
 
-    // Cannot use own code
+    // Нельзя использовать свой код
     if (referrerWallet.customerId === String(customer_id)) {
-      return Response.json({ error: "Cannot use your own code" }, { status: 400, headers: corsHeaders(request) });
+      return json({ error: "Cannot use your own code" }, 400, request);
     }
 
-    // Find or create referee wallet
+    // Найти или создать кошелёк реферала
     let refereeWallet = await prisma.wallet.findFirst({
       where: { shop: shopId, customerId: String(customer_id) },
     });
 
     if (refereeWallet?.referredBy) {
-      return Response.json({ error: "You already used a referral code" }, { status: 400, headers: corsHeaders(request) });
+      return json({ error: "You already used a referral code" }, 400, request);
     }
 
     if (!refereeWallet) {
@@ -62,23 +76,26 @@ export async function action({ request }: any) {
       });
     }
 
-    // Create referral record
+    // Создать запись реферала
     await prisma.referral.create({
       data: {
-        shop: shopId,
+        shop:         shopId,
         referrerCode: code,
-        referrerId: referrerWallet.customerId,
-        refereeId: String(customer_id),
-        status: "pending",
+        referrerId:   referrerWallet.customerId,
+        refereeId:    String(customer_id),
+        status:       "pending",
       },
     });
 
-    return Response.json({
+    console.log(`[referral/apply] ✅ ${customer_id} applied code ${code} from ${referrerWallet.customerId}`);
+
+    return json({
       success: true,
-      message: "Referral code applied! Your friend will earn bonuses from your purchases.",
-    }, { headers: corsHeaders(request) });
+      message: "Referral code applied! You'll earn bonus cashback on your purchases.",
+    }, 200, request);
+
   } catch (e: any) {
-    console.error(e);
-    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
+    console.error("[referral/apply] Error:", e);
+    return json({ error: e.message }, 500, request);
   }
 }
