@@ -2,7 +2,7 @@ import { type RouteConfig, route } from "@react-router/dev/routes";
 
 export default [
   route("/app/rewards", "./routes/app.rewards.jsx"),
-  route("/api/redeem", "./routes/api.redeem.jsx"),
+  route("/api/redeem", "./routes/api.redeem.ts"),
   route("/api/balance", "./routes/api.balance.ts"),
   route("/api/wallet", "./routes/api.wallet.ts"),
   route("/api/proxy/wallet", "./routes/api.proxy.wallet.ts"),
