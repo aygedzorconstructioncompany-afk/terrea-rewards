@@ -47,7 +47,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         status: "active",
         currentTier,
         // Сбрасываем pending если переходим на 4+ мес
-        pendingPoints: months >= 4 ? 0 : existing?.pendingPoints || 0,
+       pendingPoints: 0,
       }
     });
 
