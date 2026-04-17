@@ -1,7 +1,5 @@
 import prisma from "../db.server";
 
-const SIX_MONTHS = 6 * 30 * 24 * 60 * 60 * 1000;
-
 export const action = async ({ request }: any) => {
   try {
     if (request.method !== "POST") {
@@ -9,304 +7,156 @@ export const action = async ({ request }: any) => {
     }
 
     const body = await request.json();
-
-    const shop = "terrea-dev-store.myshopify.com";
+    const shop = request.headers.get("x-shopify-shop-domain") || "terrea-dev-store.myshopify.com";
     const customerId = body.customer?.id?.toString();
     const orderId = String(body.id);
+    const orderName = body.name || "";
     const totalPrice = parseFloat(body.total_price || "0");
-    const subtotalPrice = parseFloat(body.subtotal_price || body.total_price || "0");
 
-    if (!customerId) {
+    if (!customerId || totalPrice <= 0) {
       return new Response("OK");
     }
 
+    // Дедупликация — не обрабатывать дважды
     const existingTx = await prisma.pointsTransaction.findFirst({
-      where: { orderId, type: "earn" },
+      where: { orderId, type: { in: ["cashback", "cashback_pending"] } },
     });
-
     if (existingTx) {
       console.log("⚠️ Already processed order:", orderId);
       return new Response("Already processed");
     }
 
-    let wallet = await prisma.wallet.findFirst({
-      where: { customerId, shop },
-    });
-
-    if (!wallet) {
-      wallet = await prisma.wallet.create({
-        data: { shop, customerId, balance: 0, totalSpent: 0 },
-      });
-    }
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + SIX_MONTHS);
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-    let sub = await prisma.subscription.findFirst({
+    // Найти подписку
+    const sub = await prisma.subscription.findFirst({
       where: { shop, customerId },
     });
 
-    if (!sub) {
-      sub = await prisma.subscription.create({
-        data: {
-          shop,
-          customerId,
-          status: "active",
-          monthsActive: 1,
-          currentTier: "bronze",
-          pendingPoints: 0,
-          lastOrderAt: now,
-          lastBillingMonth: currentMonth,
-        },
-      });
-    } else {
-      const lastMonth = sub.lastBillingMonth;
-      let monthsActive = sub.monthsActive;
-      let pendingPoints = sub.pendingPoints;
+    if (!sub || sub.status !== "active") {
+      console.log(`[orders/create] No active subscription for ${customerId}`);
+      return new Response("OK");
+    }
 
-      if (lastMonth && lastMonth !== currentMonth) {
-        const [lastY, lastM] = lastMonth.split("-").map(Number);
-        const [curY, curM] = currentMonth.split("-").map(Number);
-        const monthDiff = (curY - lastY) * 12 + (curM - lastM);
+    // Найти или создать кошелёк
+    await prisma.wallet.upsert({
+      where:  { shop_customer: { shop, customerId } },
+      create: { shop, customerId, balance: 0, totalSpent: totalPrice, tier: sub.currentTier },
+      update: { tier: sub.currentTier, totalSpent: { increment: totalPrice } },
+    });
 
-        if (monthDiff > 1) {
-          console.log(`⚠️ Subscription reset for ${customerId}`);
-          monthsActive = 1;
-          pendingPoints = 0;
-        } else {
-          monthsActive += 1;
-        }
+    const wallet = await prisma.wallet.findUnique({
+      where: { shop_customer: { shop, customerId } },
+    });
+
+    if (!wallet) return new Response("OK");
+
+    // ── Тиры и кэшбэк ────────────────────────────────────────────────────────
+    // Start (1-3 мес)  → 10%, pending (не выплачивается сразу)
+    // Stay  (4-6 мес)  → 15%, начисляется сразу
+    // Belong (7-9 мес) → 20%, начисляется сразу
+    // Belong+ (10+ мес)→ 20%, начисляется сразу
+    const months = sub.monthsActive;
+    let rate = 0.10;
+    let pending = true;
+
+    if (months >= 4) { rate = 0.15; pending = false; }
+    if (months >= 7) { rate = 0.20; pending = false; }
+    if (months >= 10) { rate = 0.20; pending = false; }
+
+    const cashback = Math.round(totalPrice * rate);
+
+    if (cashback > 0) {
+      if (pending) {
+        // Start тир — копим в pendingPoints
+        await prisma.subscription.update({
+          where: { id: sub.id },
+          data:  { pendingPoints: { increment: cashback }, lastOrderAt: new Date() },
+        });
+        await prisma.pointsTransaction.create({
+          data: {
+            walletId:    wallet.id,
+            shop,
+            customerId,
+            orderId,
+            type:        "cashback_pending",
+            amount:      cashback,
+            description: `Кэшбэк 10% за заказ ${orderName} (pending до 4 мес)`,
+          },
+        });
+        console.log(`⏳ Pending cashback +${cashback} for ${customerId} (month ${months})`);
+      } else {
+        // Stay/Belong/Belong+ — начисляем сразу на баланс
+        await prisma.wallet.update({
+          where: { shop_customer: { shop, customerId } },
+          data:  { balance: { increment: cashback } },
+        });
+        await prisma.subscription.update({
+          where: { id: sub.id },
+          data:  { lastOrderAt: new Date() },
+        });
+        await prisma.pointsTransaction.create({
+          data: {
+            walletId:    wallet.id,
+            shop,
+            customerId,
+            orderId,
+            type:        "cashback",
+            amount:      cashback,
+            description: `Кэшбэк ${Math.round(rate * 100)}% за заказ ${orderName}`,
+          },
+        });
+        console.log(`✅ Cashback +${cashback} (${Math.round(rate*100)}%) for ${customerId} (month ${months})`);
       }
-
-      let currentTier = "bronze";
-      if (monthsActive >= 7) currentTier = "gold";
-      else if (monthsActive >= 4) currentTier = "silver";
-
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: {
-          monthsActive,
-          currentTier,
-          pendingPoints,
-          lastOrderAt: now,
-          lastBillingMonth: currentMonth,
-          status: "active",
-        },
-      });
-
-      sub = { ...sub, monthsActive, currentTier, pendingPoints };
     }
 
-    // ================================
-    // 💰 НАЧИСЛЕНИЕ БАЛЛОВ по ТЗ Ольги
-    // Мес 1-3 → 10% копятся → начисляются в мес 4
-    // Мес 4-6 → 15% копятся → начисляются в мес 7
-    // Мес 7-9 → 20% копятся → начисляются в мес 10
-    // Мес 10+ → 20% начисляются сразу
-    // ================================
-    let earnedPoints = 0;
-    let pointsDescription = "";
+    // ── Реферальные баллы ─────────────────────────────────────────────────────
+    // Первый заказ реферала → 15% реферреру
+    // Следующие заказы → 5% реферреру
+    const referral = await prisma.referral.findFirst({
+      where: { shop, refereeId: customerId },
+    });
 
-    if (sub.monthsActive <= 3) {
-      // Мес 1-3 — копятся 10%
-      const pending = Math.floor(subtotalPrice * 0.10);
-      const newPending = sub.pendingPoints + pending;
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { pendingPoints: newPending },
-      });
-      await prisma.pointsTransaction.create({
-        data: {
-          walletId: wallet.id, shop, customerId, orderId,
-          type: "earn_pending", amount: pending,
-          description: `Month ${sub.monthsActive}/3 — pending (10%): +${pending} pts`,
-          expiresAt,
-        },
-      });
-      await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { totalSpent: { increment: totalPrice } },
-      });
-      console.log(`⏳ Pending +${pending} (month ${sub.monthsActive}/3)`);
-
-    } else if (sub.monthsActive === 4) {
-      // Мес 4 — начисляем все pending за 1-3, копим 15%
-      const pending = sub.pendingPoints;
-      earnedPoints = pending;
-      pointsDescription = `Months 1-3 reward! +${pending} pts (10%)`;
-      const newPending = Math.floor(subtotalPrice * 0.15);
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { pendingPoints: newPending },
-      });
-      await prisma.pointsTransaction.create({
-        data: {
-          walletId: wallet.id, shop, customerId, orderId,
-          type: "earn_pending", amount: newPending,
-          description: `Month 4/6 — pending (15%): +${newPending} pts`,
-          expiresAt,
-        },
-      });
-      console.log(`⏳ Pending +${newPending} (month 4/6)`);
-
-    } else if (sub.monthsActive >= 5 && sub.monthsActive <= 6) {
-      // Мес 5-6 — копятся 15%
-      const pending = Math.floor(subtotalPrice * 0.15);
-      const newPending = sub.pendingPoints + pending;
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { pendingPoints: newPending },
-      });
-      await prisma.pointsTransaction.create({
-        data: {
-          walletId: wallet.id, shop, customerId, orderId,
-          type: "earn_pending", amount: pending,
-          description: `Month ${sub.monthsActive}/6 — pending (15%): +${pending} pts`,
-          expiresAt,
-        },
-      });
-      await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { totalSpent: { increment: totalPrice } },
-      });
-      console.log(`⏳ Pending +${pending} (month ${sub.monthsActive}/6)`);
-
-    } else if (sub.monthsActive === 7) {
-      // Мес 7 — начисляем все pending за 4-6, копим 20%
-      const pending = sub.pendingPoints;
-      earnedPoints = pending;
-      pointsDescription = `Months 4-6 reward! +${pending} pts (15%)`;
-      const newPending = Math.floor(subtotalPrice * 0.20);
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { pendingPoints: newPending },
-      });
-      await prisma.pointsTransaction.create({
-        data: {
-          walletId: wallet.id, shop, customerId, orderId,
-          type: "earn_pending", amount: newPending,
-          description: `Month 7/9 — pending (20%): +${newPending} pts`,
-          expiresAt,
-        },
-      });
-      console.log(`⏳ Pending +${newPending} (month 7/9)`);
-
-    } else if (sub.monthsActive >= 8 && sub.monthsActive <= 9) {
-      // Мес 8-9 — копятся 20%
-      const pending = Math.floor(subtotalPrice * 0.20);
-      const newPending = sub.pendingPoints + pending;
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { pendingPoints: newPending },
-      });
-      await prisma.pointsTransaction.create({
-        data: {
-          walletId: wallet.id, shop, customerId, orderId,
-          type: "earn_pending", amount: pending,
-          description: `Month ${sub.monthsActive}/9 — pending (20%): +${pending} pts`,
-          expiresAt,
-        },
-      });
-      await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { totalSpent: { increment: totalPrice } },
-      });
-      console.log(`⏳ Pending +${pending} (month ${sub.monthsActive}/9)`);
-
-    } else if (sub.monthsActive === 10) {
-      // Мес 10 — начисляем все pending за 7-9 + сразу 20%
-      const pending = sub.pendingPoints;
-      const currentBonus = Math.floor(subtotalPrice * 0.20);
-      earnedPoints = pending + currentBonus;
-      pointsDescription = `Months 7-9 reward! +${pending} pts + 20% bonus +${currentBonus} pts`;
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { pendingPoints: 0 },
-      });
-
-    } else {
-      // Мес 10+ — сразу 20%
-      earnedPoints = Math.floor(subtotalPrice * 0.20);
-      pointsDescription = `Gold tier — 20%: +${earnedPoints} pts`;
-    }
-
-    if (earnedPoints > 0) {
-      await prisma.$transaction([
-        prisma.wallet.update({
-          where: { id: wallet.id },
-          data: {
-            balance: { increment: earnedPoints },
-            totalSpent: { increment: totalPrice },
-          },
-        }),
-        prisma.pointsTransaction.create({
-          data: {
-            walletId: wallet.id, shop, customerId, orderId,
-            type: "earn", amount: earnedPoints,
-            description: pointsDescription || "Order reward",
-            expiresAt,
-          },
-        }),
-      ]);
-      console.log(`✅ Points added: +${earnedPoints} for ${customerId}`);
-    }
-
-    // ================================
-    // 🎁 РЕФЕРАЛЬНАЯ СИСТЕМА
-    // ================================
-    if (wallet.referredBy) {
+    if (referral) {
       const referrerWallet = await prisma.wallet.findFirst({
-        where: { customerId: wallet.referredBy, shop },
+        where: { shop, customerId: referral.referrerId },
       });
 
       if (referrerWallet) {
-        const previousOrders = await prisma.pointsTransaction.count({
-          where: {
-            customerId,
-            type: { in: ["earn", "earn_pending"] },
-            orderId: { not: orderId },
-          },
-        });
+        const isFirstOrder = referral.status === "pending";
+        const bonusRate    = isFirstOrder ? 0.15 : 0.05;
+        const bonus        = Math.round(totalPrice * bonusRate);
 
-        const isFirstOrder = previousOrders === 0;
-        const percent = isFirstOrder ? 0.15 : 0.05;
-        const referralBonus = Math.ceil(subtotalPrice * percent);
-
-        await prisma.$transaction([
-          prisma.wallet.update({
-            where: { id: referrerWallet.id },
-            data: { balance: { increment: referralBonus } },
-          }),
-          prisma.pointsTransaction.create({
+        if (bonus > 0) {
+          await prisma.wallet.update({
+            where: { shop_customer: { shop, customerId: referral.referrerId } },
+            data:  { balance: { increment: bonus } },
+          });
+          await prisma.pointsTransaction.create({
             data: {
-              walletId: referrerWallet.id, shop,
-              customerId: referrerWallet.customerId,
-              orderId, type: "referral", amount: referralBonus,
-              description: isFirstOrder
-                ? `Referral bonus 15% from first order of ${customerId}`
-                : `Referral bonus 5% from order of ${customerId}`,
-              expiresAt,
+              walletId:    referrerWallet.id,
+              shop,
+              customerId:  referral.referrerId,
+              orderId,
+              type:        "referral_bonus",
+              amount:      bonus,
+              description: `Реферал ${Math.round(bonusRate * 100)}% — заказ друга ${orderName}`,
             },
-          }),
-          prisma.referral.updateMany({
-            where: {
-              referrerId: referrerWallet.customerId,
-              refereeId: customerId,
-            },
+          });
+          await prisma.referral.update({
+            where: { id: referral.id },
             data: {
-              status: isFirstOrder ? "completed" : "active",
-              firstOrderBonus: isFirstOrder ? referralBonus : undefined,
-              totalBonus: { increment: referralBonus },
-              completedAt: isFirstOrder ? new Date() : undefined,
+              status:          "active",
+              firstOrderBonus: isFirstOrder ? bonus : referral.firstOrderBonus,
+              totalBonus:      { increment: bonus },
+              completedAt:     isFirstOrder ? new Date() : referral.completedAt,
             },
-          }),
-        ]);
-        console.log(`🎁 Referral bonus +${referralBonus} to ${referrerWallet.customerId}`);
+          });
+          console.log(`🎁 Referral bonus +${bonus} (${Math.round(bonusRate*100)}%) to ${referral.referrerId}`);
+        }
       }
     }
 
     return new Response(JSON.stringify({ success: true }), { status: 200 });
+
   } catch (error) {
     console.error("❌ WEBHOOK ERROR:", error);
     return new Response("Error", { status: 500 });
