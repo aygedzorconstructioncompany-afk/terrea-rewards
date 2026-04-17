@@ -77,15 +77,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
         });
       }
 
-      console.log(`[admin/test] ✅ Transferred ${pendingToTransfer} pending pts to balance for ${customerId}`);
-    } else {
-      // Просто обновить тир в кошельке
-      await prisma.wallet.upsert({
-        where: { shop_customer: { shop, customerId } },
-        create: { shop, customerId, balance: 0, totalSpent: 0, tier: currentTier },
-        update: { tier: currentTier },
-      });
-    }
+   } else {
+  // При сбросе на Start тир (1-3 мес) — обнуляем баланс
+  await prisma.wallet.upsert({
+    where: { shop_customer: { shop, customerId } },
+    create: { shop, customerId, balance: 0, totalSpent: 0, tier: currentTier },
+    update: { tier: currentTier, balance: months <= 3 ? 0 : undefined },
+  });
+}
 
     return new Response(JSON.stringify({ success: true, customerId, months, sub, transferred: pendingToTransfer }), {
       headers: { "Content-Type": "application/json" }
