@@ -1,44 +1,44 @@
-import { PrismaClient } from "@prisma/client";
+import prisma from "../db.server";
 
-const prisma = new PrismaClient();
+export async function loader({ request }: any) {
+  const url = new URL(request.url);
+  const secret = url.searchParams.get("secret");
+  const customerId = url.searchParams.get("customer_id");
+  const shop = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+  const amount = parseInt(url.searchParams.get("amount") || "0");
+  const type = url.searchParams.get("type") || "referral_bonus";
+  const description = url.searchParams.get("description") || "Manual bonus";
 
-export async function loader() {
-  const wallet = await prisma.wallet.findFirst({
-    where: { shop: "terrea-dev-store.myshopify.com" },
-  });
-  return Response.json({ debug: true, balance: wallet?.balance, id: wallet?.id });
-}
+  if (secret !== "terrea-admin-2024") {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  }
 
-export async function action({ request }: any) {
+  if (!customerId || amount <= 0) {
+    return new Response(JSON.stringify({ error: "Missing params" }), { status: 400 });
+  }
+
   try {
-    const { customerId } = await request.json();
+    const wallet = await prisma.wallet.upsert({
+      where: { shop_customer: { shop, customerId } },
+      create: { shop, customerId, balance: amount, totalSpent: 0, tier: "stay" },
+      update: { balance: { increment: amount } },
+    });
 
-    const wallet = await prisma.wallet.findFirst({
-      where: { shop: "terrea-dev-store.myshopify.com" },
-      include: {
-        transactions: {
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        },
+    await prisma.pointsTransaction.create({
+      data: {
+        walletId: wallet.id,
+        shop,
+        customerId,
+        type,
+        amount,
+        description,
       },
     });
 
-    if (!wallet) {
-      return Response.json({ balance: 0, transactions: [] });
-    }
-
-    return Response.json({
-      balance: wallet.balance,
-      transactions: wallet.transactions.map((t) => ({
-        id: t.id,
-        type: t.type,
-        amount: t.amount,
-        description: t.description,
-        createdAt: t.createdAt,
-      })),
+    return new Response(JSON.stringify({ success: true, balance: wallet.balance + amount }), {
+      headers: { "Content-Type": "application/json" },
     });
-  } catch (e) {
-    console.error("Balance error:", e);
-    return Response.json({ error: "Server error" }, { status: 500 });
+  } catch (e: any) {
+    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
   }
 }
