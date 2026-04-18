@@ -21,4 +21,5 @@ export default [
   route("/api/webhooks/register", "./routes/api.webhooks.register.ts"),
   route("/api/admin/test", "./routes/api.admin.test.ts"),
   route("/api/cron/update-months", "./routes/api.cron.update-months.ts"),
+  route("/api/admin/add-points", "./routes/api.admin.add-points.ts"),
 ] satisfies RouteConfig;
