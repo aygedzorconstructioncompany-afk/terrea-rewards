@@ -77,15 +77,20 @@ export async function action({ request }: any) {
     }
 
     // Создать запись реферала
-    await prisma.referral.create({
-      data: {
-        shop:         shopId,
-        referrerCode: code,
-        referrerId:   referrerWallet.customerId,
-        refereeId:    String(customer_id),
-        status:       "pending",
-      },
-    });
+ await prisma.referral.upsert({
+  where: { referrerCode: code },
+  create: {
+    shop:         shopId,
+    referrerCode: code,
+    referrerId:   referrerWallet.customerId,
+    refereeId:    String(customer_id),
+    status:       "pending",
+  },
+  update: {
+    refereeId: String(customer_id),
+    status:    "pending",
+  },
+});
 
     console.log(`[referral/apply] ✅ ${customer_id} applied code ${code} from ${referrerWallet.customerId}`);
 
