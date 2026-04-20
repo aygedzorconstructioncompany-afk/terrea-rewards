@@ -84,7 +84,7 @@ export async function action({ request }: any) {
 
   const {
     customer_id:   customerId,
-    shop         = "terrea-dev-store.myshopify.com",
+    shop = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com",
     order_id:      orderId,
     order_total:   orderTotal,
     redeem_amount: redeemAmount,
