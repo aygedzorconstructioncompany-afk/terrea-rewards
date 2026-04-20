@@ -1,7 +1,7 @@
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
 
-const SHOP = "terrea-dev-store.myshopify.com";
+const SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
 export async function loader({ request }) {
   const url = new URL(request.url);
