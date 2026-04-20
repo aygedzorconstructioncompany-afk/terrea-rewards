@@ -27,7 +27,7 @@ export async function loader({ request }: any) {
 
   const url        = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-  const shop       = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+ const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
   const orderTotal = parseFloat(url.searchParams.get("order_total") || "0");
 
   if (!customerId) {
