@@ -1,6 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 
-const SHOP = "terrea-dev-store.myshopify.com";
+const SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 const BASE_URL = "https://terrea-rewards-1.onrender.com";
 
 const corsHeaders = {
