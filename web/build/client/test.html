@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>TEST</title>
+  </head>
+  <body>
+
+    <h1>TEST BUTTON</h1>
+
+    <button onclick="handleClick()">CLICK ME</button>
+
+    <script>
+      async function handleClick() {
+        console.log("CLICK WORKS");
+
+        try {
+          const res = await fetch("/api/redeem", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              customerId: "1",
+              points: 500
+            })
+          });
+
+          const data = await res.json();
+
+          console.log("RESPONSE:", data);
+          alert(JSON.stringify(data));
+
+        } catch (e) {
+          console.error(e);
+          alert("ERROR");
+        }
+      }
+    </script>
+
+  </body>
+</html>
