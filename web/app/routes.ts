@@ -27,4 +27,5 @@ export default [
   route("/api/admin/balance", "./routes/api.admin.balance.ts"),
   route("/api/admin/rates", "./routes/api.admin.rates.ts"),
   route("/api/admin/cache-emails", "./routes/api.admin.cache-emails.ts"),
+  route("/api/admin/reset", "./routes/api.admin.reset.ts"),
 ] satisfies RouteConfig;
