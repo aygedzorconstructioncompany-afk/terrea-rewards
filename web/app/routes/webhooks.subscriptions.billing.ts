@@ -7,7 +7,7 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const payload = await request.json();
     const contractId = payload.subscription_contract_id?.toString();
-    const shop = request.headers.get("x-shopify-shop-domain") || "terrea-dev-store.myshopify.com";
+ const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!contractId) return new Response("No contract", { status: 400 });
 
