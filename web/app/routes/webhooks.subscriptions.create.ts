@@ -7,7 +7,7 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const payload = await request.json();
     const customerId = payload.customer_id?.toString();
-    const shop = request.headers.get("x-shopify-shop-domain") || "terrea-dev-store.myshopify.com";
+   const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customerId) return new Response("No customer", { status: 400 });
 
