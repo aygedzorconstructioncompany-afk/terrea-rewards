@@ -210,7 +210,10 @@ export default function AdminPage() {
                 <tr><td colSpan={6} style={{ ...S.td, textAlign: "center", color: "#bbb", padding: "32px" }}>No customers found</td></tr>
               ) : filtered.map(c => (
                 <tr key={c.customerId}>
-                  <td style={S.td}><span style={{ fontFamily: "monospace", fontSize: "12px" }}>{c.customerId}</span></td>
+                <td style={S.td}>
+  <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#888" }}>{c.customerId}</span>
+  {c.email && <div style={{ fontSize: "13px", color: "#1A1B18", marginTop: "2px" }}>{c.email}</div>}
+</td>
                   <td style={S.td}><span style={{ ...S.badge, ...(tierColors[c.tier] || tierColors.start) }}>{c.tier || "start"}</span></td>
                   <td style={S.td}>{c.monthsActive} mo</td>
                   <td style={S.td}>
