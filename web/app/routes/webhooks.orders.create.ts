@@ -7,7 +7,7 @@ export const action = async ({ request }: any) => {
     }
 
     const body = await request.json();
-    const shop = request.headers.get("x-shopify-shop-domain") || "terrea-dev-store.myshopify.com";
+    const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
     const customerId = body.customer?.id?.toString();
     const orderId = String(body.id);
     const orderName = body.name || "";
