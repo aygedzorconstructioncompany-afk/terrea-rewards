@@ -9,7 +9,8 @@ import {
   InlineStack
 } from "@shopify/polaris";
 
-export const ssr = false;
+export function clientLoader() { return null; }
+export function HydrateFallback() { return null; }
 
 export default function RewardsPage() {
   const [currentBalance, setCurrentBalance] = useState(0);
