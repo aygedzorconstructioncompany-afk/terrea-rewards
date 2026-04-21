@@ -6,13 +6,15 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 model Wallet {
-  id          String @id @default(cuid())
-  shop        String
-  customerId  String
-  email       String?
-  balance     Int    @default(0)
-  totalSpent  Float  @default(0)
-  tier        String @default("Basic")
+  id           String @id @default(cuid())
+  shop         String
+  customerId   String
+  email        String?
+  balance      Int    @default(0)
+  totalSpent   Float  @default(0)
+  tier         String @default("Basic")
+  referralCode String?
+  referredBy   String?
   transactions PointsTransaction[]
   @@unique([shop, customerId], name: "shop_customer")
 }
