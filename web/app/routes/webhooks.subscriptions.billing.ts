@@ -1,52 +1,94 @@
-import type { ActionFunctionArgs } from "@remix-run/node";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import type { ActionFunctionArgs } from "react-router";
+import prisma from "../db.server";
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
+    const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
     const payload = await request.json();
-    const contractId = payload.subscription_contract_id?.toString();
- const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+    const customerId = payload.customer_id?.toString();
 
-    if (!contractId) return new Response("No contract", { status: 400 });
+    if (!customerId) return new Response("No customer", { status: 400 });
 
-    const customer = await prisma.customer.findFirst({
-      where: { subscriptionContractId: contractId, shop },
+    // Найти подписку
+    const sub = await prisma.subscription.findFirst({
+      where: { shop, customerId },
     });
 
-    if (!customer) return new Response("Customer not found", { status: 404 });
+    if (!sub) return new Response("Subscription not found", { status: 404 });
 
-    const months = customer.monthsActive || 0;
-    let points = 1;
-    if (months >= 3 && months < 6) points = 2;
-    else if (months >= 6 && months < 9) points = 3;
-    else if (months >= 9) points = 5;
+    const oldMonths = sub.monthsActive;
+    const newMonths = oldMonths + 1;
 
-    await prisma.customer.update({
-      where: { id: customer.id },
-      data: { monthsActive: { increment: 1 } },
-    });
+    // Обновить тир
+    const newTier =
+      newMonths >= 10 ? "belong+" :
+      newMonths >= 7  ? "belong"  :
+      newMonths >= 4  ? "stay"    : "start";
 
-    await prisma.pointTransaction.create({
+    await prisma.subscription.update({
+      where: { id: sub.id },
       data: {
-        customerId: customer.id,
-        amount: points,
-        type: "subscription_monthly",
-        description: `Month ${months + 1} subscription reward`,
+        monthsActive: newMonths,
+        currentTier: newTier,
       },
     });
 
-    await prisma.wallet.upsert({
-      where: { customerId: customer.id },
-      create: { customerId: customer.id, balance: points },
-      update: { balance: { increment: points } },
-    });
+    // Проверяем — нужно ли выплатить pending баллы
+    // Выплата на 4-м месяце (Start → Stay)
+    // Выплата на 7-м месяце (Stay → Belong)
+    // Выплата на 10-м месяце (Belong → Belong+)
+    const shouldPayout = newMonths === 4 || newMonths === 7 || newMonths === 10;
 
-    console.log(`Awarded ${points} pts to customer ${customer.id}`);
+    if (shouldPayout && sub.pendingPoints > 0) {
+      const pending = sub.pendingPoints;
+
+      // Найти или создать кошелёк
+      const wallet = await prisma.wallet.upsert({
+        where:  { shop_customer: { shop, customerId } },
+        create: { shop, customerId, balance: pending, totalSpent: 0, tier: newTier },
+        update: { balance: { increment: pending }, tier: newTier },
+      });
+
+      // Записать транзакцию
+      const walletRecord = await prisma.wallet.findUnique({
+        where: { shop_customer: { shop, customerId } },
+      });
+
+      if (walletRecord) {
+        await prisma.pointsTransaction.create({
+          data: {
+            walletId:    walletRecord.id,
+            shop,
+            customerId,
+            orderId:     `payout-month-${newMonths}`,
+            type:        "cashback",
+            amount:      pending,
+            description: `Выплата накопленных баллов при переходе на тир ${newTier} (месяц ${newMonths})`,
+          },
+        });
+      }
+
+      // Сбросить pending
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data:  { pendingPoints: 0 },
+      });
+
+      console.log(`[billing] ✅ Payout ${pending} pts for ${customerId} at month ${newMonths} (${newTier})`);
+    } else {
+      // Просто обновить тир в кошельке
+      await prisma.wallet.upsert({
+        where:  { shop_customer: { shop, customerId } },
+        create: { shop, customerId, balance: 0, totalSpent: 0, tier: newTier },
+        update: { tier: newTier },
+      });
+      console.log(`[billing] Month ${newMonths}, tier ${newTier}, no payout`);
+    }
+
     return new Response("OK", { status: 200 });
-  } catch (e) {
-    console.error("Error:", e);
+
+  } catch (e: any) {
+    console.error("[billing] Error:", e.message);
     return new Response("Error", { status: 500 });
   }
 }
