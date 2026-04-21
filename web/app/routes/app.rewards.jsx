@@ -19,11 +19,9 @@ export default function RewardsPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const res = await fetch("/api/balance", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId: window.customerId || "demo" }),
-      });
+     const shop = "terrea-home-rituals.myshopify.com";
+const customerId = window.customerId || "demo-user-1";
+const res = await fetch(`/api/balance?customer_id=${customerId}&shop=${shop}`);
       const data = await res.json();
       setCurrentBalance(data.balance || 0);
       setTransactions(data.transactions || []);
