@@ -6,11 +6,21 @@ function getCashbackRate(monthsActive: number): number {
   if (monthsActive >= 10) return 0.20; // Belong+
   if (monthsActive >= 7)  return 0.20; // Belong
   if (monthsActive >= 4)  return 0.15; // Stay
-  return 0.10;                          // Start (pending)
+  return 0.10;                          // Start
 }
 
 function isPending(monthsActive: number): boolean {
-  return monthsActive < 4;
+  // 1-3 мес → pending до 4 мес
+  // 4-6 мес → pending до 7 мес
+  // 7-9 мес → pending до 10 мес
+  // 10+ мес → сразу
+  return monthsActive < 10;
+}
+
+function getPendingDescription(monthsActive: number, rate: number, orderName: string): string {
+  if (monthsActive < 4)  return `Кэшбэк ${Math.round(rate*100)}% за заказ ${orderName} (pending, выплата на 4-м мес)`;
+  if (monthsActive < 7)  return `Кэшбэк ${Math.round(rate*100)}% за заказ ${orderName} (pending, выплата на 7-м мес)`;
+  return `Кэшбэк ${Math.round(rate*100)}% за заказ ${orderName} (pending, выплата на 10-м мес)`;
 }
 
 // ─── Webhook handler ──────────────────────────────────────────────────────────
@@ -64,7 +74,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (cashback > 0) {
       if (pending) {
-        // Start тир — pending до 4 мес
+        // Все тиры кроме Belong+ → копим pending
         await prisma.subscription.update({
           where: { id: sub.id },
           data:  { pendingPoints: { increment: cashback }, lastOrderAt: new Date() },
@@ -77,12 +87,12 @@ export async function action({ request }: ActionFunctionArgs) {
             orderId,
             type:        "cashback_pending",
             amount:      cashback,
-            description: `Кэшбэк ${Math.round(rate * 100)}% за заказ ${orderName} (pending до 4 мес)`,
+            description: getPendingDescription(sub.monthsActive, rate, orderName),
           },
         });
-        console.log(`[orders/paid] ⏳ Pending cashback=${cashback} for ${customerId}`);
+        console.log(`[orders/paid] ⏳ Pending cashback=${cashback} for ${customerId} (month ${sub.monthsActive})`);
       } else {
-        // Stay / Belong / Belong+ — начисляем сразу
+        // Belong+ (10+ мес) — начисляем сразу
         await prisma.wallet.update({
           where: { shop_customer: { shop, customerId } },
           data:  { balance: { increment: cashback } },
