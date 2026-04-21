@@ -115,8 +115,10 @@ export default function AdminPage() {
   };
 
   const filtered = customers.filter(c =>
-    c.customerId.includes(search) || (c.tier || "").includes(search.toLowerCase())
-  );
+  c.customerId.includes(search) ||
+  (c.tier || "").includes(search.toLowerCase()) ||
+  (c.email || "").toLowerCase().includes(search.toLowerCase())
+);
 
   const totalBalance = customers.reduce((s, c) => s + c.balance, 0);
   const activeSubs = customers.filter(c => c.status === "active").length;
