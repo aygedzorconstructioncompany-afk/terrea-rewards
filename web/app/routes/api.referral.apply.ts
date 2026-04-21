@@ -31,7 +31,7 @@ export async function action({ request }: any) {
 
   try {
     const { customer_id, code, shop } = await request.json();
-    const shopId = shop || "terrea-dev-store.myshopify.com";
+   const shopId = shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id || !code) {
       return json({ error: "Missing data" }, 400, request);
