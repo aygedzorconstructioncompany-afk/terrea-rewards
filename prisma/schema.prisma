@@ -1,43 +1,34 @@
 generator client {
   provider = "prisma-client-js"
 }
-
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
-
 model Wallet {
   id          String @id @default(cuid())
   shop        String
   customerId  String
-
+  email       String?
   balance     Int    @default(0)
   totalSpent  Float  @default(0)
   tier        String @default("Basic")
-
   transactions PointsTransaction[]
-
   @@unique([shop, customerId], name: "shop_customer")
 }
-
 model PointsTransaction {
   id          String   @id @default(cuid())
   walletId    String
   wallet      Wallet   @relation(fields: [walletId], references: [id])
-
   shop        String
   customerId  String
-
   orderId     String?
   type        String
   amount      Int       @default(0)
-
   description String?
   expiresAt   DateTime?
   createdAt   DateTime  @default(now())
 }
-
 model Session {
   id            String    @id
   shop          String
@@ -54,11 +45,9 @@ model Session {
   locale        String?
   collaborator  Boolean?  @default(false)
   emailVerified Boolean?  @default(false)
-
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
-
 model Discount {
   id          String   @id @default(cuid())
   code        String   @unique
