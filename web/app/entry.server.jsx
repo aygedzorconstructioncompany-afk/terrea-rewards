@@ -14,6 +14,8 @@ export default function handleRequest(
   routerContext
 ) {
   addDocumentResponseHeaders(request, responseHeaders);
+  responseHeaders.set("Content-Security-Policy", "frame-ancestors https://admin.shopify.com https://*.myshopify.com;");
+responseHeaders.delete("X-Frame-Options");
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? "") ? "onAllReady" : "onShellReady";
 
