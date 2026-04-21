@@ -23,7 +23,7 @@ export async function loader({ request }: any) {
   }
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-  const shop = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
   if (!customerId) {
     return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
   }
