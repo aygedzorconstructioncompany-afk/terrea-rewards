@@ -1,14 +1,28 @@
 import prisma from "../db.server";
 
-const corsHeaders = (request: any) => ({
+const corsHeaders = () => ({
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 });
 
+async function getCustomerEmail(customerId: string): Promise<string> {
+  try {
+    const shop = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+    const token = process.env.SHOPIFY_ACCESS_TOKEN;
+    const res = await fetch(`https://${shop}/admin/api/2024-01/customers/${customerId}.json`, {
+      headers: { "X-Shopify-Access-Token": token! },
+    });
+    const data = await res.json();
+    return data.customer?.email || "";
+  } catch {
+    return "";
+  }
+}
+
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
+    return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   const url = new URL(request.url);
@@ -31,24 +45,25 @@ export async function loader({ request }: any) {
       orderBy: { balance: "desc" },
     });
 
-    const subs = await prisma.subscription.findMany({
-      where: { shop },
-    });
-
+    const subs = await prisma.subscription.findMany({ where: { shop } });
     const subMap = Object.fromEntries(subs.map(s => [s.customerId, s]));
 
-    const customers = wallets.map(w => ({
-      customerId: w.customerId,
-      balance: w.balance,
-      tier: w.tier,
-      totalSpent: w.totalSpent,
-      monthsActive: subMap[w.customerId]?.monthsActive || 0,
-      status: subMap[w.customerId]?.status || "none",
-      lastTransaction: w.transactions[0]?.createdAt || null,
+    const customers = await Promise.all(wallets.map(async w => {
+      const email = await getCustomerEmail(w.customerId);
+      return {
+        customerId: w.customerId,
+        email,
+        balance: w.balance,
+        tier: w.tier,
+        totalSpent: w.totalSpent,
+        monthsActive: subMap[w.customerId]?.monthsActive || 0,
+        status: subMap[w.customerId]?.status || "none",
+        lastTransaction: w.transactions[0]?.createdAt || null,
+      };
     }));
 
     return new Response(JSON.stringify({ success: true, customers, total: customers.length }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders(request) },
+      headers: { "Content-Type": "application/json", ...corsHeaders() },
     });
 
   } catch (e: any) {
