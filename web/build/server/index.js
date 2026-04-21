@@ -896,7 +896,7 @@ var app_admin_default = UNSAFE_withComponentProps(function AdminPage() {
 //#endregion
 //#region app/routes/api.redeem.ts
 var api_redeem_exports = /* @__PURE__ */ __exportAll({
-	action: () => action$15,
+	action: () => action$16,
 	loader: () => loader$15
 });
 var corsHeaders$11 = (request) => {
@@ -960,7 +960,7 @@ async function loader$15({ request }) {
 		return json$1({ error: e.message }, 500, request);
 	}
 }
-async function action$15({ request }) {
+async function action$16({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: corsHeaders$11(request)
@@ -1075,7 +1075,7 @@ async function loader$14({ request }) {
 //#endregion
 //#region app/routes/api.wallet.ts
 var api_wallet_exports = /* @__PURE__ */ __exportAll({
-	action: () => action$14,
+	action: () => action$15,
 	loader: () => loader$13
 });
 var corsHeaders$9 = (request) => {
@@ -1132,7 +1132,7 @@ async function loader$13({ request }) {
 		});
 	}
 }
-async function action$14({ request }) {
+async function action$15({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: corsHeaders$9(request)
@@ -1180,7 +1180,7 @@ async function action$14({ request }) {
 //#endregion
 //#region app/routes/api.proxy.wallet.ts
 var api_proxy_wallet_exports = /* @__PURE__ */ __exportAll({
-	action: () => action$13,
+	action: () => action$14,
 	loader: () => loader$12
 });
 async function loader$12({ request }) {
@@ -1218,7 +1218,7 @@ async function loader$12({ request }) {
 		return Response.json({ error: "Server error" }, { status: 500 });
 	}
 }
-async function action$13({ request }) {
+async function action$14({ request }) {
 	try {
 		if (new URL(request.url).pathname.endsWith("/redeem")) {
 			const { customer_id, points } = await request.json();
@@ -1254,8 +1254,8 @@ async function action$13({ request }) {
 }
 //#endregion
 //#region app/routes/api.order.ts
-var api_order_exports = /* @__PURE__ */ __exportAll({ action: () => action$12 });
-async function action$12({ request }) {
+var api_order_exports = /* @__PURE__ */ __exportAll({ action: () => action$13 });
+async function action$13({ request }) {
 	try {
 		const order = await request.json();
 		const shop = request.headers.get("x-shopify-shop-domain") || "terrea-home-rituals.myshopify.com";
@@ -1363,7 +1363,7 @@ async function loader$11({ request }) {
 //#endregion
 //#region app/routes/api.referral.apply.ts
 var api_referral_apply_exports = /* @__PURE__ */ __exportAll({
-	action: () => action$11,
+	action: () => action$12,
 	loader: () => loader$10
 });
 var corsHeaders$7 = (request) => {
@@ -1388,7 +1388,7 @@ async function loader$10({ request }) {
 		headers: corsHeaders$7(request)
 	});
 }
-async function action$11({ request }) {
+async function action$12({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: corsHeaders$7(request)
@@ -1444,8 +1444,8 @@ async function action$11({ request }) {
 }
 //#endregion
 //#region app/routes/webhooks.orders.create.ts
-var webhooks_orders_create_exports = /* @__PURE__ */ __exportAll({ action: () => action$10 });
-var action$10 = async ({ request }) => {
+var webhooks_orders_create_exports = /* @__PURE__ */ __exportAll({ action: () => action$11 });
+var action$11 = async ({ request }) => {
 	try {
 		if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
 		const body = await request.json();
@@ -1600,14 +1600,14 @@ var action$10 = async ({ request }) => {
 };
 //#endregion
 //#region app/routes/webhooks.app.uninstalled.ts
-var webhooks_app_uninstalled_exports = /* @__PURE__ */ __exportAll({ action: () => action$9 });
-async function action$9({ request }) {
+var webhooks_app_uninstalled_exports = /* @__PURE__ */ __exportAll({ action: () => action$10 });
+async function action$10({ request }) {
 	console.log("App uninstalled");
 	return new Response("OK", { status: 200 });
 }
 //#endregion
 //#region app/routes/webhooks.orders.paid.ts
-var webhooks_orders_paid_exports = /* @__PURE__ */ __exportAll({ action: () => action$8 });
+var webhooks_orders_paid_exports = /* @__PURE__ */ __exportAll({ action: () => action$9 });
 function getCashbackRate(monthsActive) {
 	if (monthsActive >= 10) return .2;
 	if (monthsActive >= 7) return .2;
@@ -1622,7 +1622,7 @@ function getPendingDescription(monthsActive, rate, orderName) {
 	if (monthsActive < 7) return `Кэшбэк ${Math.round(rate * 100)}% за заказ ${orderName} (pending, выплата на 7-м мес)`;
 	return `Кэшбэк ${Math.round(rate * 100)}% за заказ ${orderName} (pending, выплата на 10-м мес)`;
 }
-async function action$8({ request }) {
+async function action$9({ request }) {
 	const shop = request.headers.get("x-shopify-shop-domain") || "";
 	let payload;
 	try {
@@ -1850,7 +1850,7 @@ async function loader$9({ request }) {
 //#endregion
 //#region app/routes/api.subscription.manage.ts
 var api_subscription_manage_exports = /* @__PURE__ */ __exportAll({
-	action: () => action$7,
+	action: () => action$8,
 	loader: () => loader$8
 });
 var corsHeaders$5 = (request) => {
@@ -1868,7 +1868,7 @@ async function loader$8({ request }) {
 		headers: corsHeaders$5(request)
 	});
 }
-async function action$7({ request }) {
+async function action$8({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: corsHeaders$5(request)
@@ -1999,7 +1999,7 @@ async function loader$7({ request }) {
 }
 //#endregion
 //#region app/routes/api.points.transfer.ts
-var api_points_transfer_exports = /* @__PURE__ */ __exportAll({ action: () => action$6 });
+var api_points_transfer_exports = /* @__PURE__ */ __exportAll({ action: () => action$7 });
 var corsHeaders$3 = (request) => {
 	const origin = request.headers.get("Origin") || "*";
 	return {
@@ -2009,7 +2009,7 @@ var corsHeaders$3 = (request) => {
 		"Access-Control-Allow-Credentials": "true"
 	};
 };
-async function action$6({ request }) {
+async function action$7({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: corsHeaders$3(request)
@@ -2087,7 +2087,7 @@ async function action$6({ request }) {
 }
 //#endregion
 //#region app/routes/api.points.checkout.ts
-var api_points_checkout_exports = /* @__PURE__ */ __exportAll({ action: () => action$5 });
+var api_points_checkout_exports = /* @__PURE__ */ __exportAll({ action: () => action$6 });
 var corsHeaders$2 = (request) => {
 	const origin = request.headers.get("Origin") || "*";
 	return {
@@ -2097,7 +2097,7 @@ var corsHeaders$2 = (request) => {
 		"Access-Control-Allow-Credentials": "true"
 	};
 };
-async function action$5({ request }) {
+async function action$6({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: corsHeaders$2(request)
@@ -2156,9 +2156,9 @@ async function action$5({ request }) {
 }
 //#endregion
 //#region app/routes/webhooks.subscriptions.create.ts
-var webhooks_subscriptions_create_exports = /* @__PURE__ */ __exportAll({ action: () => action$4 });
+var webhooks_subscriptions_create_exports = /* @__PURE__ */ __exportAll({ action: () => action$5 });
 var prisma = new PrismaClient();
-async function action$4({ request }) {
+async function action$5({ request }) {
 	try {
 		const payload = await request.json();
 		const customerId = payload.customer_id?.toString();
@@ -2192,8 +2192,8 @@ async function action$4({ request }) {
 }
 //#endregion
 //#region app/routes/webhooks.subscriptions.billing.ts
-var webhooks_subscriptions_billing_exports = /* @__PURE__ */ __exportAll({ action: () => action$3 });
-async function action$3({ request }) {
+var webhooks_subscriptions_billing_exports = /* @__PURE__ */ __exportAll({ action: () => action$4 });
+async function action$4({ request }) {
 	try {
 		const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 		const customerId = (await request.json()).customer_id?.toString();
@@ -2275,7 +2275,7 @@ async function action$3({ request }) {
 //#endregion
 //#region app/routes/api.webhooks.register.ts
 var api_webhooks_register_exports = /* @__PURE__ */ __exportAll({
-	action: () => action$2,
+	action: () => action$3,
 	loader: () => loader$6
 });
 var SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
@@ -2359,7 +2359,7 @@ async function loader$6({ request }) {
 		}
 	});
 }
-async function action$2({ request }) {
+async function action$3({ request }) {
 	const results = await registerWebhooks();
 	return new Response(JSON.stringify({
 		success: true,
@@ -2685,8 +2685,8 @@ async function loader$2({ request }) {
 }
 //#endregion
 //#region app/routes/api.admin.balance.ts
-var api_admin_balance_exports = /* @__PURE__ */ __exportAll({ action: () => action$1 });
-async function action$1({ request }) {
+var api_admin_balance_exports = /* @__PURE__ */ __exportAll({ action: () => action$2 });
+async function action$2({ request }) {
 	if (request.method === "OPTIONS") return new Response(null, {
 		status: 204,
 		headers: { "Access-Control-Allow-Origin": "*" }
@@ -2736,7 +2736,7 @@ async function action$1({ request }) {
 //#endregion
 //#region app/routes/api.admin.rates.ts
 var api_admin_rates_exports = /* @__PURE__ */ __exportAll({
-	action: () => action,
+	action: () => action$1,
 	loader: () => loader$1
 });
 var RATES_KEY = "cashback_rates";
@@ -2761,7 +2761,7 @@ async function loader$1({ request }) {
 		return new Response(JSON.stringify({ error: e.message }), { status: 500 });
 	}
 }
-async function action({ request }) {
+async function action$1({ request }) {
 	try {
 		const { secret, rates } = await request.json();
 		if (secret !== "terrea-admin-2024") return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
@@ -2820,11 +2820,30 @@ async function loader({ request }) {
 	}), { headers: { "Content-Type": "application/json" } });
 }
 //#endregion
+//#region app/routes/api.admin.reset.ts
+var api_admin_reset_exports = /* @__PURE__ */ __exportAll({ action: () => action });
+async function action({ request }) {
+	try {
+		const { secret } = await request.json();
+		if (secret !== "terrea-admin-2024") return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+		await db_server_default.pointsTransaction.deleteMany({});
+		await db_server_default.referral.deleteMany({});
+		await db_server_default.wallet.deleteMany({});
+		await db_server_default.subscription.deleteMany({});
+		return new Response(JSON.stringify({
+			success: true,
+			message: "Database cleared!"
+		}), { headers: { "Content-Type": "application/json" } });
+	} catch (e) {
+		return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+	}
+}
+//#endregion
 //#region \0virtual:react-router/server-manifest
 var server_manifest_default = {
 	"entry": {
-		"module": "/assets/entry.client-BBLBlkQV.js",
-		"imports": ["/assets/jsx-runtime-BiO8ABPD.js", "/assets/react-dom-W-alKvAS.js"],
+		"module": "/assets/entry.client-BdeSEyqY.js",
+		"imports": ["/assets/jsx-runtime-BcmxfV-G.js", "/assets/react-dom-D9Fwu5mJ.js"],
 		"css": []
 	},
 	"routes": {
@@ -2841,11 +2860,11 @@ var server_manifest_default = {
 			"hasClientMiddleware": false,
 			"hasDefaultExport": true,
 			"hasErrorBoundary": false,
-			"module": "/assets/root-BvtoHF3u.js",
+			"module": "/assets/root-CyDYuf2w.js",
 			"imports": [
-				"/assets/jsx-runtime-BiO8ABPD.js",
-				"/assets/react-dom-W-alKvAS.js",
-				"/assets/context-BAGhd72z.js"
+				"/assets/jsx-runtime-BcmxfV-G.js",
+				"/assets/react-dom-D9Fwu5mJ.js",
+				"/assets/context-DimUrWZr.js"
 			],
 			"css": ["/assets/root-CAaziDo7.css"],
 			"clientActionModule": void 0,
@@ -2866,11 +2885,11 @@ var server_manifest_default = {
 			"hasClientMiddleware": false,
 			"hasDefaultExport": true,
 			"hasErrorBoundary": false,
-			"module": "/assets/app.rewards-NJEkXs8f.js",
+			"module": "/assets/app.rewards-BclvgHss.js",
 			"imports": [
-				"/assets/jsx-runtime-BiO8ABPD.js",
-				"/assets/context-BAGhd72z.js",
-				"/assets/react-dom-W-alKvAS.js"
+				"/assets/jsx-runtime-BcmxfV-G.js",
+				"/assets/context-DimUrWZr.js",
+				"/assets/react-dom-D9Fwu5mJ.js"
 			],
 			"css": [],
 			"clientActionModule": void 0,
@@ -2891,8 +2910,8 @@ var server_manifest_default = {
 			"hasClientMiddleware": false,
 			"hasDefaultExport": true,
 			"hasErrorBoundary": false,
-			"module": "/assets/app.admin-DSvAgz52.js",
-			"imports": ["/assets/jsx-runtime-BiO8ABPD.js"],
+			"module": "/assets/app.admin-b7Sc-ZqA.js",
+			"imports": ["/assets/jsx-runtime-BcmxfV-G.js"],
 			"css": [],
 			"clientActionModule": void 0,
 			"clientLoaderModule": void 0,
@@ -3423,10 +3442,31 @@ var server_manifest_default = {
 			"clientLoaderModule": void 0,
 			"clientMiddlewareModule": void 0,
 			"hydrateFallbackModule": void 0
+		},
+		"routes/api.admin.reset": {
+			"id": "routes/api.admin.reset",
+			"parentId": "root",
+			"path": "/api/admin/reset",
+			"index": void 0,
+			"caseSensitive": void 0,
+			"hasAction": true,
+			"hasLoader": false,
+			"hasClientAction": false,
+			"hasClientLoader": false,
+			"hasClientMiddleware": false,
+			"hasDefaultExport": false,
+			"hasErrorBoundary": false,
+			"module": "/assets/api.admin.reset-DIDBFD-7.js",
+			"imports": [],
+			"css": [],
+			"clientActionModule": void 0,
+			"clientLoaderModule": void 0,
+			"clientMiddlewareModule": void 0,
+			"hydrateFallbackModule": void 0
 		}
 	},
-	"url": "/assets/manifest-bbcee377.js",
-	"version": "bbcee377",
+	"url": "/assets/manifest-b5ddbc11.js",
+	"version": "b5ddbc11",
 	"sri": void 0
 };
 //#endregion
@@ -3676,6 +3716,14 @@ var routes = {
 		index: void 0,
 		caseSensitive: void 0,
 		module: api_admin_cache_emails_exports
+	},
+	"routes/api.admin.reset": {
+		id: "routes/api.admin.reset",
+		parentId: "root",
+		path: "/api/admin/reset",
+		index: void 0,
+		caseSensitive: void 0,
+		module: api_admin_reset_exports
 	}
 };
 var allowedActionOrigins = false;
