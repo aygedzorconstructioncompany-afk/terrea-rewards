@@ -1,44 +1,57 @@
 import prisma from "../db.server";
 
-export async function loader({ request }: any) {
-  const url = new URL(request.url);
-  const secret = url.searchParams.get("secret");
-  const customerId = url.searchParams.get("customer_id");
-  const shop = url.searchParams.get("shop") || "terrea-home-rituals.myshopify.com";
-  const amount = parseInt(url.searchParams.get("amount") || "0");
-  const type = url.searchParams.get("type") || "referral_bonus";
-  const description = url.searchParams.get("description") || "Manual bonus";
+const corsHeaders = (request: any) => {
+  const origin = request.headers.get("Origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, ngrok-skip-browser-warning",
+    "Access-Control-Allow-Credentials": "true",
+  };
+};
 
-  if (secret !== "terrea-admin-2024") {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+export async function loader({ request }: any) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
-  if (!customerId || amount <= 0) {
-    return new Response(JSON.stringify({ error: "Missing params" }), { status: 400 });
+  const url = new URL(request.url);
+  const customerId = url.searchParams.get("customer_id");
+  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+
+  if (!customerId) {
+    return Response.json({ error: "No customerId" }, { status: 400, headers: corsHeaders(request) });
   }
 
   try {
-    const wallet = await prisma.wallet.upsert({
-      where: { shop_customer: { shop, customerId } },
-      create: { shop, customerId, balance: amount, totalSpent: 0, tier: "stay" },
-      update: { balance: { increment: amount } },
-    });
-
-    await prisma.pointsTransaction.create({
-      data: {
-        walletId: wallet.id,
-        shop,
-        customerId,
-        type,
-        amount,
-        description,
+    const wallet = await prisma.wallet.findFirst({
+      where: { customerId, shop },
+      include: {
+        transactions: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
       },
     });
 
-    return new Response(JSON.stringify({ success: true, balance: wallet.balance + amount }), {
-      headers: { "Content-Type": "application/json" },
-    });
+    if (!wallet) {
+      return Response.json({ balance: 0, transactions: [] }, { headers: corsHeaders(request) });
+    }
+
+    return Response.json({
+      balance: wallet.balance,
+      tier: wallet.tier,
+      totalSpent: wallet.totalSpent,
+      transactions: wallet.transactions.map((t: any) => ({
+        id: t.id,
+        type: t.type,
+        amount: t.amount,
+        description: t.description,
+        createdAt: t.createdAt,
+      })),
+    }, { headers: corsHeaders(request) });
+
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), { status: 500 });
+    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
   }
 }
