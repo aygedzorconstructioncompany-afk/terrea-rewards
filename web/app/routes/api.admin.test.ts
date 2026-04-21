@@ -19,7 +19,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   date.setMonth(date.getMonth() - months);
 
   const currentTier = months >= 10 ? "belong+" : months >= 7 ? "belong" : months >= 4 ? "stay" : "start";
-  const shop = "terrea-dev-store.myshopify.com";
+  const shop = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
   try {
     // Найти существующую подписку
