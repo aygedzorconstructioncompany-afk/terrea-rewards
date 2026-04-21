@@ -1,6 +1,7 @@
 import { type RouteConfig, route } from "@react-router/dev/routes";
 export default [
   route("/app/rewards", "./routes/app.rewards.jsx"),
+  route("/app/admin", "./routes/app.admin.tsx"),
   route("/api/redeem", "./routes/api.redeem.ts"),
   route("/api/balance", "./routes/api.balance.ts"),
   route("/api/wallet", "./routes/api.wallet.ts"),
@@ -22,4 +23,7 @@ export default [
   route("/api/admin/test", "./routes/api.admin.test.ts"),
   route("/api/cron/update-months", "./routes/api.cron.update-months.ts"),
   route("/api/admin/add-points", "./routes/api.admin.add-points.ts"),
+  route("/api/admin/customers", "./routes/api.admin.customers.ts"),
+  route("/api/admin/balance", "./routes/api.admin.balance.ts"),
+  route("/api/admin/rates", "./routes/api.admin.rates.ts"),
 ] satisfies RouteConfig;
