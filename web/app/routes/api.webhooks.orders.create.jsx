@@ -19,7 +19,7 @@ export const action = async ({ request }) => {
 
     const body = await request.json();
 
-    const shop = "terrea-dev-store.myshopify.com";
+    const shop = "terrea-home-rituals.myshopify.com";
     const customerId = body.customer?.id?.toString();
     const orderId = String(body.id);
     const totalPrice = parseFloat(body.total_price || "0");

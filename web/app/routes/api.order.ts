@@ -3,7 +3,7 @@ import prisma from "../db.server";
 export async function action({ request }: any) {
   try {
     const order = await request.json();
-    const shop = request.headers.get("x-shopify-shop-domain") || "terrea-dev-store.myshopify.com";
+    const shop = request.headers.get("x-shopify-shop-domain") || "terrea-home-rituals.myshopify.com";
     const customerId = order.customer?.id?.toString();
 
     if (!customerId) {

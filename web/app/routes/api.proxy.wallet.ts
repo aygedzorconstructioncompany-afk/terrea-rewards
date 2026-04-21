@@ -4,7 +4,7 @@ export async function loader({ request }: any) {
   try {
     const url = new URL(request.url);
     const customerId = url.searchParams.get("customer_id");
-    const shop = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+    const shop = url.searchParams.get("shop") || "terrea-home-rituals.myshopify.com";
 
     if (!customerId) {
       return Response.json({ error: "No customerId" }, { status: 400 });
@@ -47,7 +47,7 @@ export async function action({ request }: any) {
 
     if (path.endsWith("/redeem")) {
       const { customer_id, points } = await request.json();
-      const shop = "terrea-dev-store.myshopify.com";
+      const shop = "terrea-home-rituals.myshopify.com";
 
       const wallet = await prisma.wallet.findFirst({
         where: { customerId: String(customer_id), shop },

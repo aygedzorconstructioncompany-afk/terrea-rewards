@@ -5,7 +5,7 @@ export async function loader({ request }: any) {
   const url = new URL(request.url);
   const secret = url.searchParams.get("secret");
   const customerId = url.searchParams.get("customer_id");
-  const shop = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+  const shop = url.searchParams.get("shop") || "terrea-home-rituals.myshopify.com";
   const amount = parseInt(url.searchParams.get("amount") || "0");
   const type = url.searchParams.get("type") || "referral_bonus";
   const description = url.searchParams.get("description") || "Manual bonus";

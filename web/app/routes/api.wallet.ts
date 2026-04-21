@@ -17,7 +17,7 @@ export async function loader({ request }: any) {
 
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customer_id") || url.searchParams.get("customerId");
-  const shop = url.searchParams.get("shop") || "terrea-dev-store.myshopify.com";
+  const shop = url.searchParams.get("shop") || "terrea-home-rituals.myshopify.com";
 
   if (!customerId) {
     return Response.json({ balance: 0, transactions: [] }, { headers: corsHeaders(request) });
@@ -61,7 +61,7 @@ export async function action({ request }: any) {
 
   try {
     const { customer_id, shop } = await request.json();
-    const shopId = shop || "terrea-dev-store.myshopify.com";
+    const shopId = shop || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id) {
       return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });

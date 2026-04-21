@@ -105,7 +105,7 @@ export default function RewardsPage() {
                 variant="primary"
                 onClick={() =>
                   (window.top.location.href =
-                    "https://terrea-dev-store.myshopify.com/discount/" + code)
+                    "https://terrea-home-rituals.myshopify.com/discount/" + code)
                 }
               >
                 Apply & Checkout

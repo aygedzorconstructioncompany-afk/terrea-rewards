@@ -1,0 +1,34 @@
+client_id = "ebec796aba07daa291decb4aa209eee5"
+name = "terrea-rewards-prod"
+application_url = "https://terrea-rewards-1.onrender.com"
+embedded = true
+
+[webhooks]
+api_version = "2024-01"
+
+[[webhooks.subscriptions]]
+topics = ["orders/paid"]
+uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/paid"
+
+[[webhooks.subscriptions]]
+topics = ["orders/create"]
+uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/create"
+
+[[webhooks.subscriptions]]
+topics = ["subscription_contracts/create"]
+uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/create"
+
+[[webhooks.subscriptions]]
+topics = ["subscription_billing_attempts/success"]
+uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/billing"
+
+[access_scopes]
+scopes = "read_customers,write_customers,write_discounts,read_orders,write_orders,read_own_subscription_contracts,write_own_subscription_contracts"
+
+[auth]
+redirect_urls = ["https://terrea-rewards-1.onrender.com/auth/callback"]
+
+[app_proxy]
+url = "https://terrea-rewards-1.onrender.com"
+subpath = "proxy"
+prefix = "apps"

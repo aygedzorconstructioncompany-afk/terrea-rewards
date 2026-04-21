@@ -67,7 +67,7 @@ export default function Index() {
           <h2>{code}</h2>
 
           <a
-            href={`https://terrea-dev-store.myshopify.com/discount/${code}`}
+            href={`https://terrea-home-rituals.myshopify.com/discount/${code}`}
             style={{
               display: "inline-block",
               marginTop: "10px"
