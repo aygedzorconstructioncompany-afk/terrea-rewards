@@ -17,7 +17,7 @@ export async function action({ request }: any) {
 
   try {
     const { customer_id, to_email, points, shop } = await request.json();
-    const shopId = shop || "terrea-dev-store.myshopify.com";
+   const shopId = shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id || !to_email || !points) {
       return Response.json({ error: "Missing data" }, { status: 400, headers: corsHeaders(request) });
