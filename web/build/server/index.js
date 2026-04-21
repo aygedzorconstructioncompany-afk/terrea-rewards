@@ -105,8 +105,12 @@ function handleRequest(request, responseStatusCode, responseHeaders, routerConte
 //#region app/root.tsx
 var root_exports = /* @__PURE__ */ __exportAll({
 	HydrateFallback: () => HydrateFallback$2,
-	default: () => root_default
+	default: () => root_default,
+	headers: () => headers
 });
+function headers() {
+	return { "Content-Security-Policy": "frame-ancestors https://admin.shopify.com https://*.myshopify.com;" };
+}
 var HydrateFallback$2 = UNSAFE_withHydrateFallbackProps(function HydrateFallback() {
 	return /* @__PURE__ */ jsx("div", { children: "Loading..." });
 });
