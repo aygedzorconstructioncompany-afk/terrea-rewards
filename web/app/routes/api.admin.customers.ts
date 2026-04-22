@@ -6,7 +6,7 @@ const corsHeaders = () => ({
   "Access-Control-Allow-Headers": "Content-Type",
 });
 
-async function getAndCacheEmail(customerId: string, walletId: string): Promise<string> {
+async function getCustomerEmail(customerId: string): Promise<string> {
   try {
     const shop = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
     const token = process.env.SHOPIFY_ACCESS_TOKEN;
@@ -14,14 +14,7 @@ async function getAndCacheEmail(customerId: string, walletId: string): Promise<s
       headers: { "X-Shopify-Access-Token": token! },
     });
     const data = await res.json();
-    const email = data.customer?.email || "";
-    if (email) {
-      await prisma.wallet.update({
-        where: { id: walletId },
-        data: { email },
-      });
-    }
-    return email;
+    return data.customer?.email || "";
   } catch {
     return "";
   }
@@ -56,10 +49,7 @@ export async function loader({ request }: any) {
     const subMap = Object.fromEntries(subs.map(s => [s.customerId, s]));
 
     const customers = await Promise.all(wallets.map(async w => {
-      let email = w.email || "";
-      if (!email) {
-        email = await getAndCacheEmail(w.customerId, w.id);
-      }
+      const email = await getCustomerEmail(w.customerId);
       return {
         customerId: w.customerId,
         email,
