@@ -5,19 +5,15 @@ embedded = true
 
 [webhooks]
 api_version = "2024-01"
-
 [[webhooks.subscriptions]]
 topics = ["orders/paid"]
 uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/paid"
-
 [[webhooks.subscriptions]]
 topics = ["orders/create"]
 uri = "https://terrea-rewards-1.onrender.com/webhooks/orders/create"
-
 [[webhooks.subscriptions]]
 topics = ["subscription_contracts/create"]
 uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/create"
-
 [[webhooks.subscriptions]]
 topics = ["subscription_billing_attempts/success"]
 uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/billing"
@@ -30,5 +26,5 @@ redirect_urls = ["https://terrea-rewards-1.onrender.com/auth/callback"]
 
 [app_proxy]
 url = "https://terrea-rewards-1.onrender.com"
-subpath = "proxy"
+subpath = "rewards"
 prefix = "apps"
