@@ -5,7 +5,7 @@ const corsHeaders = (request: any) => {
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, ngrok-skip-browser-warning",
+    "Access-Control-Allow-Headers": "Content-Type, text/plain",
     "Access-Control-Allow-Credentials": "true",
   };
 };
@@ -19,23 +19,25 @@ export async function action({ request }: any) {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
   try {
-    const body = await request.json();
-    const { customer_id, shop, billing_date } = body;
+    const text = await request.text();
+    const { customer_id, shop } = JSON.parse(text);
+
     if (!customer_id || !shop) {
       return Response.json(
         { error: "Missing customer_id or shop" },
         { status: 400, headers: corsHeaders(request) }
       );
     }
+
     const existing = await prisma.subscription.findFirst({
       where: { customerId: String(customer_id), shop }
     });
+
     if (existing) {
       await prisma.subscription.update({
         where: { id: existing.id },
         data: {
           status: "active",
-          billingDate: billing_date ? new Date(billing_date) : undefined,
           lastOrderAt: new Date(),
         }
       });
@@ -47,12 +49,12 @@ export async function action({ request }: any) {
           status: "active",
           monthsActive: 0,
           pendingPoints: 0,
-          billingDate: billing_date ? new Date(billing_date) : new Date(),
           startedAt: new Date(),
           lastOrderAt: new Date(),
         }
       });
     }
+
     return Response.json(
       { success: true },
       { headers: corsHeaders(request) }
