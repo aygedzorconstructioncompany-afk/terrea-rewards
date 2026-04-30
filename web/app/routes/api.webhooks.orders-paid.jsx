@@ -14,28 +14,36 @@ export const action = async ({ request }) => {
     }
 
     // ---------------------------
-    // 🔥 1. СОЗДАНИЕ ПОДПИСКИ (ВАЖНО)
+    // 🔥 1. СОЗДАНИЕ ИЛИ ОБНОВЛЕНИЕ ПОДПИСКИ
     // ---------------------------
 
-    const existingSub = await prisma.subscription.findFirst({
-      where: { customerId, shop },
+    await prisma.subscription.upsert({
+      where: {
+        shop_customerId: {
+          shop,
+          customerId,
+        },
+      },
+      update: {
+        status: "active",
+        nextChargeDate: new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ),
+        lastOrderAt: new Date(),
+        daysLeft: null,
+      },
+      create: {
+        customerId,
+        shop,
+        status: "active",
+        nextChargeDate: new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ),
+        lastOrderAt: new Date(),
+      },
     });
 
-    if (!existingSub) {
-      await prisma.subscription.create({
-        data: {
-          customerId,
-          shop,
-          status: "active",
-          nextChargeDate: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000
-          ),
-          lastOrderAt: new Date(),
-        },
-      });
-
-      console.log("✅ Subscription created after order");
-    }
+    console.log("✅ Subscription upserted");
 
     // ---------------------------
     // 🔥 2. СПИСАНИЕ ПОИНТОВ (как было)
