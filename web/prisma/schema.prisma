@@ -17,6 +17,7 @@ model Wallet {
   referralCode String? @unique
   referredBy   String?
   transactions PointsTransaction[]
+
   @@unique([shop, customerId], name: "shop_customer")
 }
 
@@ -76,6 +77,7 @@ model Referral {
   totalBonus      Int       @default(0)
   createdAt       DateTime  @default(now())
   completedAt     DateTime?
+
   @@index([referrerId])
   @@index([refereeId])
 }
@@ -84,14 +86,23 @@ model Subscription {
   id              String    @id @default(cuid())
   shop            String
   customerId      String
-  status          String    @default("active")
+
+  status          String    @default("active") // active | paused | canceled
+
   startedAt       DateTime  @default(now())
   lastOrderAt     DateTime?
+
+  // 🔥 ВАЖНО — ДЛЯ БИЛЛИНГА
+  nextChargeDate  DateTime?
+  daysLeft        Int?
+
   monthsActive    Int       @default(0)
   currentTier     String    @default("bronze")
   pendingPoints   Int       @default(0)
   lastBillingMonth String?
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+
   @@unique([shop, customerId])
 }
