@@ -14,6 +14,7 @@ export default [
   route("/webhooks/orders/paid", "./routes/webhooks.orders.paid.ts"),
   route("/api/subscription", "./routes/api.subscription.ts"),
   route("/api/subscription/manage", "./routes/api.subscription.manage.ts"),
+  route("/api/subscription/date", "./routes/api.subscription.date.ts"),
   route("/api/points/expire", "./routes/api.points.expire.ts"),
   route("/api/points/transfer", "./routes/api.points.transfer.ts"),
   route("/api/points/checkout", "./routes/api.points.checkout.ts"),
