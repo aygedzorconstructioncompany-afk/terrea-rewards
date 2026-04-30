@@ -1,31 +1,69 @@
 import { json } from "@remix-run/node";
 import prisma from "../db.server";
 
-export async function loader() {
-  const now = new Date();
+export async function action({ request }) {
+  const { customerId, actionType } = await request.json();
 
-  const subs = await prisma.subscription.findMany({
-    where: {
-      status: "active",
-      nextChargeDate: {
-        lte: now
-      }
-    }
+  const sub = await prisma.subscription.findFirst({
+    where: { customerId: String(customerId) }
   });
 
-  for (const sub of subs) {
-    // 💳 тут будет списание (пока просто лог)
-    console.log("Charging customer:", sub.customerId);
+  if (!sub) {
+    return json({ error: "No subscription" }, { status: 404 });
+  }
+
+  const now = new Date();
+
+  // 🔸 PAUSE
+  if (actionType === "pause") {
+    const daysLeft = Math.ceil(
+      (new Date(sub.nextChargeDate).getTime() - now.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
 
     await prisma.subscription.update({
       where: { id: sub.id },
       data: {
-        nextChargeDate: new Date(
-          now.getTime() + 30 * 24 * 60 * 60 * 1000
-        )
+        status: "paused",
+        daysLeft: Math.max(daysLeft, 0),
+        nextChargeDate: null
       }
     });
+
+    return json({ ok: true });
   }
 
-  return json({ ok: true });
+  // 🔸 RESUME
+  if (actionType === "resume") {
+    const nextCharge = new Date(
+      now.getTime() + (sub.daysLeft || 30) * 24 * 60 * 60 * 1000
+    );
+
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        status: "active",
+        nextChargeDate: nextCharge,
+        daysLeft: null
+      }
+    });
+
+    return json({ ok: true });
+  }
+
+  // 🔸 CANCEL
+  if (actionType === "cancel") {
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        status: "canceled",
+        nextChargeDate: null,
+        daysLeft: null
+      }
+    });
+
+    return json({ ok: true });
+  }
+
+  return json({ error: "Unknown action" }, { status: 400 });
 }
