@@ -10,12 +10,17 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customerId");
 
+  const shop = request.headers.get("x-shopify-shop-domain");
+
   const wallet = await prisma.wallet.findFirst({
     where: { customerId: String(customerId) }
   });
 
   const subscription = await prisma.subscription.findFirst({
-    where: { customerId: String(customerId) }
+    where: {
+      customerId: String(customerId),
+      shop
+    }
   });
 
   return json({
@@ -47,8 +52,8 @@ export default function WalletPage() {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        customerId,
-        actionType: type
+        customer_id: customerId,   // 🔥 исправлено
+        action: type               // 🔥 исправлено
       })
     });
 
@@ -87,7 +92,7 @@ export default function WalletPage() {
         )}
 
         {status === "paused" && (
-          <p>Paused. Remaining: {subscription.daysLeft} days</p>
+          <p>Paused. Remaining: {subscription?.daysLeft ?? 0} days</p>
         )}
 
         <div style={{ marginTop: 15 }}>
