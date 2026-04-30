@@ -52,14 +52,17 @@ export async function action({ request }: any) {
       return Response.json({ success: true, status: "paused", message: "Subscription paused" }, { headers: corsHeaders(request) });
     }
 
-    if (subAction === "cancel") {
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: { status: "cancelled", monthsActive: 0, pendingPoints: 0 }
-      });
-      return Response.json({ success: true, status: "cancelled", message: "Subscription cancelled. Progress reset." }, { headers: corsHeaders(request) });
-    }
+if (subAction === "cancel") {
+  await prisma.subscription.update({
+    where: { id: sub.id },
+    data: { status: "canceled", monthsActive: 0, pendingPoints: 0 }
+  });
 
+  return Response.json(
+    { success: true, status: "canceled", message: "Subscription canceled" },
+    { headers: corsHeaders(request) }
+  );
+}
     if (subAction === "resume") {
       await prisma.subscription.update({
         where: { id: sub.id },
