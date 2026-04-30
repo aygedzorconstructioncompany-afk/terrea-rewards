@@ -7,11 +7,39 @@ export const action = async ({ request }) => {
     const customerId = order.customer?.id?.toString();
     const shop = request.headers.get("x-shopify-shop-domain");
 
-    if (!customerId) {
+    if (!customerId || !shop) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    // ---------------------------
+    // 🔥 1. СОЗДАНИЕ ПОДПИСКИ (ВАЖНО)
+    // ---------------------------
+
+    const existingSub = await prisma.subscription.findFirst({
+      where: { customerId, shop },
+    });
+
+    if (!existingSub) {
+      await prisma.subscription.create({
+        data: {
+          customerId,
+          shop,
+          status: "active",
+          nextChargeDate: new Date(
+            Date.now() + 30 * 24 * 60 * 60 * 1000
+          ),
+          lastOrderAt: new Date(),
+        },
+      });
+
+      console.log("✅ Subscription created after order");
+    }
+
+    // ---------------------------
+    // 🔥 2. СПИСАНИЕ ПОИНТОВ (как было)
+    // ---------------------------
 
     const note = order.note || "";
     const match = note.match(/USED_POINTS:(\d+)/);
