@@ -18,6 +18,7 @@ export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
+
   try {
     const text = await request.text();
     const { customer_id, shop } = JSON.parse(text);
@@ -59,6 +60,7 @@ export async function action({ request }: any) {
       { success: true },
       { headers: corsHeaders(request) }
     );
+
   } catch (e: any) {
     return Response.json(
       { error: e.message },
