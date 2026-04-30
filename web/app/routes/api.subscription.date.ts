@@ -27,9 +27,6 @@ export async function action({ request }: any) {
         { status: 400, headers: corsHeaders(request) }
       );
     }
-    const existing = await prisma.subscription.findFirst({
-      where: { customerId: String(customer_id), shop }
-    });
     if (existing) {
       await prisma.subscription.update({
         where: { id: existing.id },
@@ -39,6 +36,7 @@ export async function action({ request }: any) {
           lastOrderAt: new Date(),
         }
       });
+    }
     } else {
       await prisma.subscription.create({
         data: {
