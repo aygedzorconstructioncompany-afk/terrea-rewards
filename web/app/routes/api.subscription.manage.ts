@@ -16,9 +16,9 @@ async function updateShopifyContract(shop: string, contractId: string, action: s
   const API_URL = `https://${shop}/admin/api/2024-01/graphql.json`;
 
   const mutations: Record<string, string> = {
-    pause:  `mutation { subscriptionContractPause(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
-    cancel: `mutation { subscriptionContractCancel(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
-    resume: `mutation { subscriptionContractActivate(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
+pause:  `mutation { subscriptionContractUpdate(contractId: "${contractId}", input: { status: PAUSED }) { contract { id status } userErrors { field message } } }`,
+cancel: `mutation { subscriptionContractUpdate(contractId: "${contractId}", input: { status: CANCELLED }) { contract { id status } userErrors { field message } } }`,
+resume: `mutation { subscriptionContractUpdate(contractId: "${contractId}", input: { status: ACTIVE }) { contract { id status } userErrors { field message } } }`,
   };
 
   const query = mutations[action];
