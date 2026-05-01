@@ -86,23 +86,17 @@ model Subscription {
   id              String    @id @default(cuid())
   shop            String
   customerId      String
-
-  status          String    @default("active") // active | paused | canceled
-
+  status          String    @default("active")
   startedAt       DateTime  @default(now())
   lastOrderAt     DateTime?
-
-  // 🔥 ВАЖНО — ДЛЯ БИЛЛИНГА
   nextChargeDate  DateTime?
   daysLeft        Int?
-
   monthsActive    Int       @default(0)
   currentTier     String    @default("bronze")
   pendingPoints   Int       @default(0)
   lastBillingMonth String?
-
+  subscriptionContractId String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-
   @@unique([shop, customerId])
 }
