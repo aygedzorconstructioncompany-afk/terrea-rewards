@@ -5,20 +5,18 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const payload = await request.json();
     const customerId = payload.customer_id?.toString();
-    const shop = request.headers.get("x-shopify-shop-domain") || 
-                 process.env.SHOPIFY_SHOP_DOMAIN || 
+    const shop = request.headers.get("x-shopify-shop-domain") ||
+                 process.env.SHOPIFY_SHOP_DOMAIN ||
                  "terrea-home-rituals.myshopify.com";
 
     if (!customerId) return new Response("No customer", { status: 400 });
 
-    // Создаём wallet если нет
     await prisma.wallet.upsert({
       where: { shop_customer: { shop, customerId } },
       create: { shop, customerId, balance: 0, totalSpent: 0, tier: "start" },
       update: {},
     });
 
-    // Создаём subscription в правильной таблице
     await prisma.subscription.upsert({
       where: { shop_customer: { shop, customerId } },
       create: {
