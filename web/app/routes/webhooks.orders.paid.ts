@@ -52,7 +52,14 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     if (!sub || sub.status !== "active") {
-      console.log(`[orders/paid] No active subscription for ${customerId}`);
+      console.log(`[orders/paid] No active subscription for ${customerId} — checking referral only`);
+      // No subscription but still process referral bonus
+      const refWallet = await prisma.wallet.findFirst({
+        where: { shop, customerId },
+      });
+      if (refWallet) {
+        await processReferralBonus(shop, customerId, orderId, orderName, orderTotal, refWallet.id);
+      }
       return new Response("OK", { status: 200 });
     }
 
@@ -134,7 +141,6 @@ export async function action({ request }: ActionFunctionArgs) {
         });
         console.log(`[orders/paid] ⏳ Pending cashback=${cashback} for ${customerId} (month ${newMonthsActive})`);
       } else {
-        // Belong+ (10+ мес) — начисляем сразу
         await prisma.wallet.update({
           where: { shop_customer: { shop, customerId } },
           data:  { balance: { increment: cashback } },
