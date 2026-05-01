@@ -65,7 +65,7 @@ export async function loader({ request }: any) {
             }
           }
         `,
-        variables: { query: `customer_id:${customerId}` },
+        variables: { query: `customer_gid:gid://shopify/Customer/${customerId}` },
       }),
     });
 
