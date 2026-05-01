@@ -14,12 +14,10 @@ async function registerWebhooks() {
   const API_URL = `https://${SHOP}/admin/api/2024-01/graphql.json`;
 
   const WEBHOOKS = [
-    // ✅ Главный — начисление кэшбэка при каждом оплаченном заказе
     { topic: "ORDERS_PAID", endpoint: "/webhooks/orders/paid" },
-
-    // Подписки
     { topic: "SUBSCRIPTION_CONTRACTS_CREATE", endpoint: "/webhooks/subscriptions/create" },
     { topic: "SUBSCRIPTION_BILLING_ATTEMPTS_SUCCESS", endpoint: "/webhooks/subscriptions/billing" },
+    { topic: "SUBSCRIPTION_CONTRACTS_DELETE", endpoint: "/webhooks/subscriptions/cancel" },
   ];
 
   const results = [];
@@ -73,7 +71,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
 
-  // Только с секретом
   const url = new URL(request.url);
   const secret = url.searchParams.get("secret");
   if (secret !== process.env.ADMIN_SECRET && secret !== "terrea-admin-2024") {
