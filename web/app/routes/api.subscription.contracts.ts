@@ -24,7 +24,6 @@ export async function loader({ request }: any) {
   }
 
   try {
-    const gid = `gid://shopify/Customer/${customerId}`;
     const API_URL = `https://${SHOP}/admin/api/2024-01/graphql.json`;
 
     const res = await fetch(API_URL, {
@@ -35,47 +34,45 @@ export async function loader({ request }: any) {
       },
       body: JSON.stringify({
         query: `
-          query getContracts($customerId: ID!) {
-            customer(id: $customerId) {
-              subscriptionContracts(first: 20) {
-                edges {
-                  node {
-                    id
-                    status
-                    nextBillingDate
-                    lines(first: 10) {
-                      edges {
-                        node {
-                          title
-                          quantity
-                          currentPrice {
-                            amount
-                            currencyCode
-                          }
-                          variantImage {
-                            url
-                          }
+          query getContracts($query: String!) {
+            subscriptionContracts(first: 20, query: $query) {
+              edges {
+                node {
+                  id
+                  status
+                  nextBillingDate
+                  lines(first: 10) {
+                    edges {
+                      node {
+                        title
+                        quantity
+                        currentPrice {
+                          amount
+                          currencyCode
+                        }
+                        variantImage {
+                          url
                         }
                       }
                     }
-                    billingPolicy {
-                      interval
-                      intervalCount
-                    }
+                  }
+                  billingPolicy {
+                    interval
+                    intervalCount
                   }
                 }
               }
             }
           }
         `,
-        variables: { customerId: gid },
+        variables: { query: `customer_id:${customerId}` },
       }),
     });
 
     const data = await res.json();
     console.log('[contracts] Shopify response:', JSON.stringify(data));
 
-    const edges = data?.data?.customer?.subscriptionContracts?.edges || [];
+    const edges = data?.data?.subscriptionContracts?.edges || [];
     const contracts = edges.map((e: any) => {
       const node = e.node;
       const contractId = node.id.replace("gid://shopify/SubscriptionContract/", "");
