@@ -46,24 +46,24 @@ export async function action({ request }: ActionFunctionArgs) {
     return new Response("OK", { status: 200 });
   }
 
+  const MAIN_SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+
   try {
     const sub = await prisma.subscription.findFirst({
-      where: { shop, customerId },
+      where: { shop: MAIN_SHOP, customerId },
     });
 
     if (!sub || sub.status !== "active") {
       console.log(`[orders/paid] No active subscription for ${customerId} — checking referral only`);
-      // No subscription but still process referral bonus
       const refWallet = await prisma.wallet.findFirst({
-        where: { shop, customerId },
+        where: { customerId },
       });
       if (refWallet) {
-        await processReferralBonus(shop, customerId, orderId, orderName, orderTotal, refWallet.id);
+        await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, refWallet.id);
       }
       return new Response("OK", { status: 200 });
     }
 
-    // Увеличиваем месяцы и обновляем тир
     const newMonthsActive = sub.monthsActive + 1;
     const newTier = getTier(newMonthsActive);
 
@@ -78,25 +78,23 @@ export async function action({ request }: ActionFunctionArgs) {
 
     console.log(`[orders/paid] 📅 monthsActive=${newMonthsActive} tier=${newTier} for ${customerId}`);
 
-    // Найти или создать кошелёк
     await prisma.wallet.upsert({
-      where:  { shop_customer: { shop, customerId } },
-      create: { shop, customerId, balance: 0, totalSpent: orderTotal, tier: newTier },
+      where:  { shop_customer: { shop: MAIN_SHOP, customerId } },
+      create: { shop: MAIN_SHOP, customerId, balance: 0, totalSpent: orderTotal, tier: newTier },
       update: { tier: newTier, totalSpent: { increment: orderTotal } },
     });
 
     const wallet = await prisma.wallet.findUnique({
-      where: { shop_customer: { shop, customerId } },
+      where: { shop_customer: { shop: MAIN_SHOP, customerId } },
     });
 
     if (!wallet) return new Response("OK", { status: 200 });
 
-    // Выплата накопленных pending баллов при достижении порога
     if (newMonthsActive === 4 || newMonthsActive === 7 || newMonthsActive === 10) {
       const pendingToRelease = sub.pendingPoints;
       if (pendingToRelease > 0) {
         await prisma.wallet.update({
-          where: { shop_customer: { shop, customerId } },
+          where: { shop_customer: { shop: MAIN_SHOP, customerId } },
           data: { balance: { increment: pendingToRelease } },
         });
         await prisma.subscription.update({
@@ -106,7 +104,7 @@ export async function action({ request }: ActionFunctionArgs) {
         await prisma.pointsTransaction.create({
           data: {
             walletId:    wallet.id,
-            shop,
+            shop:        MAIN_SHOP,
             customerId,
             orderId,
             type:        "cashback_released",
@@ -131,7 +129,7 @@ export async function action({ request }: ActionFunctionArgs) {
         await prisma.pointsTransaction.create({
           data: {
             walletId:    wallet.id,
-            shop,
+            shop:        MAIN_SHOP,
             customerId,
             orderId,
             type:        "cashback_pending",
@@ -142,13 +140,13 @@ export async function action({ request }: ActionFunctionArgs) {
         console.log(`[orders/paid] ⏳ Pending cashback=${cashback} for ${customerId} (month ${newMonthsActive})`);
       } else {
         await prisma.wallet.update({
-          where: { shop_customer: { shop, customerId } },
+          where: { shop_customer: { shop: MAIN_SHOP, customerId } },
           data:  { balance: { increment: cashback } },
         });
         await prisma.pointsTransaction.create({
           data: {
             walletId:    wallet.id,
-            shop,
+            shop:        MAIN_SHOP,
             customerId,
             orderId,
             type:        "cashback",
@@ -160,8 +158,7 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
 
-    // Реферальные баллы
-    await processReferralBonus(shop, customerId, orderId, orderName, orderTotal, wallet.id);
+    await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, wallet.id);
 
     return new Response("OK", { status: 200 });
 
@@ -176,13 +173,14 @@ async function processReferralBonus(
   orderName: string, orderTotal: number, walletId: string
 ) {
   try {
+    // No shop filter — works across any shop domain
     const referral = await prisma.referral.findFirst({
-      where: { shop, refereeId: customerId },
+      where: { refereeId: customerId },
     });
     if (!referral) return;
 
     const referrerWallet = await prisma.wallet.findFirst({
-      where: { shop, customerId: referral.referrerId },
+      where: { customerId: referral.referrerId },
     });
     if (!referrerWallet) return;
 
