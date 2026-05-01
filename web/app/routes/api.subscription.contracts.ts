@@ -13,7 +13,6 @@ const corsHeaders = (request: any) => {
 const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
 const SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
-// Fetch recent subscription orders for customer to get product lines
 async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
   try {
     const res = await fetch(`https://${SHOP}/admin/api/2024-01/graphql.json`, {
@@ -37,6 +36,9 @@ async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
                           variant {
                             price
                             image { url }
+                            product {
+                              featuredImage { url }
+                            }
                           }
                         }
                       }
@@ -56,14 +58,14 @@ async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
     const orders = data?.data?.customer?.orders?.edges || [];
     if (!orders.length) return [];
 
-    // Take line items from the most recent order
     const latestOrder = orders[0].node;
     return (latestOrder.lineItems?.edges || []).map((l: any) => ({
       title: l.node.title,
       quantity: l.node.quantity,
       price: l.node.variant?.price,
       currency: "GBP",
-      image: l.node.variant?.image?.url,
+      // Try variant image first, then product featured image
+      image: l.node.variant?.image?.url || l.node.variant?.product?.featuredImage?.url || null,
     }));
   } catch (e: any) {
     console.error("[contracts] Order lines error:", e.message);
@@ -86,20 +88,18 @@ export async function loader({ request }: any) {
   try {
     const numericId = String(customerId).replace("gid://shopify/Customer/", "");
 
-    // Read from our DB — no extra scope needed
     const subs = await prisma.subscription.findMany({
       where: { customerId: numericId },
     });
 
-    console.log(`[contracts] Found ${subs.length} subs in DB for customer ${numericId}`);
+    console.log(`[contracts] Found ${subs.length} subs for customer ${numericId}`);
 
     if (!subs.length) {
       return Response.json({ contracts: [] }, { headers: corsHeaders(request) });
     }
 
-    // Get product lines from recent orders (uses read_orders scope we already have)
     const lines = await fetchCustomerOrderLines(numericId);
-    console.log(`[contracts] Got ${lines.length} line items from orders`);
+    console.log(`[contracts] Got ${lines.length} lines, images: ${lines.filter((l:any) => l.image).length}`);
 
     const contracts = subs.map((s: any) => {
       const contractNumericId = s.subscriptionContractId
@@ -178,7 +178,6 @@ export async function action({ request }: any) {
       return Response.json({ error: errors[0].message }, { status: 400, headers: corsHeaders(request) });
     }
 
-    // Update status in our DB too
     const dbStatus = contractAction === "pause" ? "paused"
                    : contractAction === "cancel" ? "cancelled"
                    : "active";
