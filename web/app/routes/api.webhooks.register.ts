@@ -17,7 +17,7 @@ async function registerWebhooks() {
     { topic: "ORDERS_PAID", endpoint: "/webhooks/orders/paid" },
     { topic: "SUBSCRIPTION_CONTRACTS_CREATE", endpoint: "/webhooks/subscriptions/create" },
     { topic: "SUBSCRIPTION_BILLING_ATTEMPTS_SUCCESS", endpoint: "/webhooks/subscriptions/billing" },
-    { topic: "SUBSCRIPTION_CONTRACTS_DELETE", endpoint: "/webhooks/subscriptions/cancel" },
+   { topic: "SUBSCRIPTION_CONTRACTS_UPDATE", endpoint: "/webhooks/subscriptions/cancel" },
   ];
 
   const results = [];
