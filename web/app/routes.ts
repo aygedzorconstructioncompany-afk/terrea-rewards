@@ -25,6 +25,7 @@ export default [
   route("/api/admin/test", "./routes/api.admin.test.ts"),
   route("/api/cron/update-months", "./routes/api.cron.update-months.ts"),
   route("/api/admin/add-points", "./routes/api.admin.add-points.ts"),
+  route("/api/admin/add-month", "./routes/api.admin.add-month.ts"),
   route("/api/admin/customers", "./routes/api.admin.customers.ts"),
   route("/api/admin/balance", "./routes/api.admin.balance.ts"),
   route("/api/admin/rates", "./routes/api.admin.rates.ts"),
