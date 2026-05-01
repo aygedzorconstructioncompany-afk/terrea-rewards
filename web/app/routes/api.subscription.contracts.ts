@@ -52,7 +52,6 @@ export async function loader({ request }: any) {
                             amount
                             currencyCode
                           }
-                          productId
                           variantImage {
                             url
                           }
@@ -74,17 +73,20 @@ export async function loader({ request }: any) {
     });
 
     const data = await res.json();
-    const contracts = data?.data?.customer?.subscriptionContracts?.edges?.map((e: any) => {
+    console.log('[contracts] Shopify response:', JSON.stringify(data));
+
+    const edges = data?.data?.customer?.subscriptionContracts?.edges || [];
+    const contracts = edges.map((e: any) => {
       const node = e.node;
-      const id = node.id.replace("gid://shopify/SubscriptionContract/", "");
+      const contractId = node.id.replace("gid://shopify/SubscriptionContract/", "");
       return {
-        id,
+        id: contractId,
         gid: node.id,
         status: node.status,
         nextBillingDate: node.nextBillingDate,
         interval: node.billingPolicy?.interval,
         intervalCount: node.billingPolicy?.intervalCount,
-        lines: node.lines?.edges?.map((l: any) => ({
+        lines: (node.lines?.edges || []).map((l: any) => ({
           title: l.node.title,
           quantity: l.node.quantity,
           price: l.node.currentPrice?.amount,
@@ -92,11 +94,12 @@ export async function loader({ request }: any) {
           image: l.node.variantImage?.url,
         })),
       };
-    }) || [];
+    });
 
     return Response.json({ contracts }, { headers: corsHeaders(request) });
 
   } catch (e: any) {
+    console.error('[contracts] Error:', e.message);
     return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
   }
 }
@@ -139,7 +142,8 @@ export async function action({ request }: any) {
     const data = await res.json();
     console.log(`[contracts/${contractAction}]`, JSON.stringify(data));
 
-    const result = data?.data?.[`subscriptionContract${contractAction.charAt(0).toUpperCase() + contractAction.slice(1)}`];
+    const actionKey = `subscriptionContract${contractAction.charAt(0).toUpperCase() + contractAction.slice(1)}`;
+    const result = data?.data?.[actionKey];
     const errors = result?.userErrors || [];
 
     if (errors.length > 0) {
