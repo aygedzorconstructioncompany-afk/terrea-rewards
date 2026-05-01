@@ -37,7 +37,9 @@ async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
                             price
                             image { url }
                             product {
+                              handle
                               featuredImage { url }
+                              images(first: 1) { edges { node { url } } }
                             }
                           }
                         }
@@ -59,14 +61,44 @@ async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
     if (!orders.length) return [];
 
     const latestOrder = orders[0].node;
-    return (latestOrder.lineItems?.edges || []).map((l: any) => ({
-      title: l.node.title,
-      quantity: l.node.quantity,
-      price: l.node.variant?.price,
-      currency: "GBP",
-      // Try variant image first, then product featured image
-      image: l.node.variant?.image?.url || l.node.variant?.product?.featuredImage?.url || null,
-    }));
+    const lines = (latestOrder.lineItems?.edges || []).map((l: any) => {
+      // Try all possible image sources
+      const image =
+        l.node.variant?.image?.url ||
+        l.node.variant?.product?.featuredImage?.url ||
+        l.node.variant?.product?.images?.edges?.[0]?.node?.url ||
+        null;
+
+      return {
+        title: l.node.title,
+        quantity: l.node.quantity,
+        price: l.node.variant?.price,
+        currency: "GBP",
+        image,
+        productHandle: l.node.variant?.product?.handle || null,
+      };
+    });
+
+    // For lines still missing image, fetch via REST
+    await Promise.all(
+      lines.map(async (line: any) => {
+        if (!line.image && line.productHandle) {
+          try {
+            const pRes = await fetch(
+              `https://${SHOP}/admin/api/2024-01/products.json?handle=${line.productHandle}&fields=id,images`,
+              { headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN } }
+            );
+            const pData = await pRes.json();
+            const product = pData?.products?.[0];
+            if (product?.images?.[0]?.src) {
+              line.image = product.images[0].src;
+            }
+          } catch {}
+        }
+      })
+    );
+
+    return lines;
   } catch (e: any) {
     console.error("[contracts] Order lines error:", e.message);
     return [];
@@ -99,7 +131,7 @@ export async function loader({ request }: any) {
     }
 
     const lines = await fetchCustomerOrderLines(numericId);
-    console.log(`[contracts] Got ${lines.length} lines, images: ${lines.filter((l:any) => l.image).length}`);
+    console.log(`[contracts] Lines: ${lines.length}, with image: ${lines.filter((l: any) => l.image).length}`);
 
     const contracts = subs.map((s: any) => {
       const contractNumericId = s.subscriptionContractId
