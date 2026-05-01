@@ -11,14 +11,12 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (!customerId) return new Response("No customer", { status: 400 });
 
-    // Создаём wallet если нет
     await prisma.wallet.upsert({
       where: { shop_customer: { shop, customerId } },
       create: { shop, customerId, balance: 0, totalSpent: 0, tier: "start" },
       update: {},
     });
 
-    // Создаём subscription
     await prisma.subscription.upsert({
       where: { shop_customer: { shop, customerId } },
       create: {
@@ -39,7 +37,7 @@ export async function action({ request }: ActionFunctionArgs) {
       },
     });
 
-    console.log(`✅ Subscription created for customer ${customerId}`);
+    console.log(`✅ Billing success for customer ${customerId}`);
     return new Response("OK", { status: 200 });
   } catch (e: any) {
     console.error("Error:", e.message);
