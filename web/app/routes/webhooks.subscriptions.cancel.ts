@@ -5,39 +5,41 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     const payload = await request.json();
     const customerId = payload.customer_id?.toString();
+    const shopifyStatus = payload.status?.toString().toLowerCase();
     const shop = request.headers.get("x-shopify-shop-domain") ||
                  process.env.SHOPIFY_SHOP_DOMAIN ||
                  "terrea-home-rituals.myshopify.com";
 
     if (!customerId) return new Response("No customer", { status: 400 });
 
-    await prisma.wallet.upsert({
-      where: { shop_customer: { shop, customerId } },
-      create: { shop, customerId, balance: 0, totalSpent: 0, tier: "start" },
-      update: {},
+    const sub = await prisma.subscription.findFirst({
+      where: { shop, customerId },
     });
 
-    await prisma.subscription.upsert({
-      where: { shop_customer: { shop, customerId } },
-      create: {
-        shop,
-        customerId,
-        status: "active",
-        currentTier: "start",
-        monthsActive: 0,
-        pendingPoints: 0,
-        subscriptionContractId: payload.id?.toString(),
-        startedAt: new Date(),
-        lastOrderAt: new Date(),
-      },
-      update: {
-        status: "active",
-        subscriptionContractId: payload.id?.toString(),
-        lastOrderAt: new Date(),
+    if (!sub) {
+      console.log(`[subscriptions/update] No subscription found for ${customerId}`);
+      return new Response("OK", { status: 200 });
+    }
+
+    // Маппинг Shopify статусов на наши
+    let newStatus = sub.status;
+    if (shopifyStatus === "cancelled" || shopifyStatus === "canceled") {
+      newStatus = "cancelled";
+    } else if (shopifyStatus === "paused") {
+      newStatus = "paused";
+    } else if (shopifyStatus === "active") {
+      newStatus = "active";
+    }
+
+    await prisma.subscription.update({
+      where: { id: sub.id },
+      data: {
+        status: newStatus,
+        ...(newStatus === "cancelled" ? { monthsActive: 0, pendingPoints: 0 } : {}),
       },
     });
 
-    console.log(`✅ Subscription created for customer ${customerId}`);
+    console.log(`✅ Subscription status=${newStatus} for customer ${customerId}`);
     return new Response("OK", { status: 200 });
   } catch (e: any) {
     console.error("Error:", e.message);
