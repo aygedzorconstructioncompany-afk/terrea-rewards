@@ -1,12 +1,11 @@
 import type { ActionFunctionArgs } from "react-router";
 import prisma from "../db.server";
 
-// ─── Тиры ────────────────────────────────────────────────────────────────────
 function getCashbackRate(monthsActive: number): number {
-  if (monthsActive >= 10) return 0.20; // Belong+
-  if (monthsActive >= 7)  return 0.20; // Belong
-  if (monthsActive >= 4)  return 0.15; // Stay
-  return 0.10;                          // Start
+  if (monthsActive >= 10) return 0.20;
+  if (monthsActive >= 7)  return 0.20;
+  if (monthsActive >= 4)  return 0.15;
+  return 0.10;
 }
 
 function isPending(monthsActive: number): boolean {
@@ -26,7 +25,6 @@ function getTier(monthsActive: number): string {
   return "start";
 }
 
-// ─── Webhook handler ──────────────────────────────────────────────────────────
 export async function action({ request }: ActionFunctionArgs) {
   const shop = request.headers.get("x-shopify-shop-domain") || "";
 
@@ -65,7 +63,7 @@ export async function action({ request }: ActionFunctionArgs) {
     await prisma.subscription.update({
       where: { id: sub.id },
       data: {
-        monthsActive: { increment: 1 },
+        monthsActive: newMonthsActive,
         currentTier: newTier,
         lastOrderAt: new Date(),
       },
@@ -86,13 +84,39 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (!wallet) return new Response("OK", { status: 200 });
 
+    // Выплата накопленных pending баллов при достижении порога
+    if (newMonthsActive === 4 || newMonthsActive === 7 || newMonthsActive === 10) {
+      const pendingToRelease = sub.pendingPoints;
+      if (pendingToRelease > 0) {
+        await prisma.wallet.update({
+          where: { shop_customer: { shop, customerId } },
+          data: { balance: { increment: pendingToRelease } },
+        });
+        await prisma.subscription.update({
+          where: { id: sub.id },
+          data: { pendingPoints: 0 },
+        });
+        await prisma.pointsTransaction.create({
+          data: {
+            walletId:    wallet.id,
+            shop,
+            customerId,
+            orderId,
+            type:        "cashback_released",
+            amount:      pendingToRelease,
+            description: `Выплата накопленного кэшбэка на ${newMonthsActive}-м месяце`,
+          },
+        });
+        console.log(`[orders/paid] 💰 Released ${pendingToRelease} pending points for ${customerId} at month ${newMonthsActive}`);
+      }
+    }
+
     const rate     = getCashbackRate(newMonthsActive);
     const cashback = Math.round(orderTotal * rate);
     const pending  = isPending(newMonthsActive);
 
     if (cashback > 0) {
       if (pending) {
-        // Все тиры кроме Belong+ → копим pending
         await prisma.subscription.update({
           where: { id: sub.id },
           data:  { pendingPoints: { increment: cashback } },
