@@ -36,7 +36,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const customerId = String(payload.customer?.id || "");
-  const orderTotal = parseFloat(payload.total_price || "0");
+ const orderTotal = parseFloat(payload.subtotal_price || "0");
   const orderId    = String(payload.id || "");
   const orderName  = payload.name || "";
 
