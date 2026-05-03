@@ -173,6 +173,15 @@ async function processReferralBonus(
   orderName: string, orderTotal: number, walletId: string
 ) {
   try {
+    // ✅ Защита от дублей
+    const existing = await prisma.pointsTransaction.findFirst({
+      where: { orderId, type: "referral_bonus" }
+    });
+    if (existing) {
+      console.log(`[referral] ⚠️ Already processed orderId=${orderId}`);
+      return;
+    }
+
     // No shop filter — works across any shop domain
     const referral = await prisma.referral.findFirst({
       where: { refereeId: customerId },
