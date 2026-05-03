@@ -36,9 +36,16 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const customerId = String(payload.customer?.id || "");
- const orderTotal = parseFloat(payload.subtotal_price || "0");
+  const orderTotal = parseFloat(payload.subtotal_price || "0");
   const orderId    = String(payload.id || "");
   const orderName  = payload.name || "";
+  const tags       = (payload.tags || "").toLowerCase();
+  const sourceName = (payload.source_name || "").toLowerCase();
+
+  if (tags.includes("subscription") || sourceName === "subscription_contract" || sourceName === "recharge") {
+    console.log(`[orders/paid] ⏭️ Subscription order ${orderName} — skipping`);
+    return new Response("OK", { status: 200 });
+  }
 
   console.log(`[orders/paid] shop=${shop} customer=${customerId} order=${orderName} total=${orderTotal}`);
 
@@ -173,7 +180,6 @@ async function processReferralBonus(
   orderName: string, orderTotal: number, walletId: string
 ) {
   try {
-    // ✅ Защита от дублей
     const existing = await prisma.pointsTransaction.findFirst({
       where: { orderId, type: "referral_bonus" }
     });
@@ -182,7 +188,6 @@ async function processReferralBonus(
       return;
     }
 
-    // No shop filter — works across any shop domain
     const referral = await prisma.referral.findFirst({
       where: { refereeId: customerId },
     });
