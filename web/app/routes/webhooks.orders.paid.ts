@@ -13,9 +13,9 @@ function isPending(monthsActive: number): boolean {
 }
 
 function getPendingDescription(monthsActive: number, rate: number, orderName: string): string {
-  if (monthsActive < 4)  return `Кэшбэк ${Math.round(rate*100)}% за заказ ${orderName} (pending, выплата на 4-м мес)`;
-  if (monthsActive < 7)  return `Кэшбэк ${Math.round(rate*100)}% за заказ ${orderName} (pending, выплата на 7-м мес)`;
-  return `Кэшбэк ${Math.round(rate*100)}% за заказ ${orderName} (pending, выплата на 10-м мес)`;
+  if (monthsActive < 4)  return `Cashback ${Math.round(rate*100)}% for order ${orderName} (pending, paid on month 4)`;
+  if (monthsActive < 7)  return `Cashback ${Math.round(rate*100)}% for order ${orderName} (pending, paid on month 7)`;
+  return `Cashback ${Math.round(rate*100)}% for order ${orderName} (pending, paid on month 10)`;
 }
 
 function getTier(monthsActive: number): string {
@@ -116,7 +116,7 @@ export async function action({ request }: ActionFunctionArgs) {
             orderId,
             type:        "cashback_released",
             amount:      pendingToRelease,
-            description: `Выплата накопленного кэшбэка на ${newMonthsActive}-м месяце`,
+            description: `Cashback released at month ${newMonthsActive}`,
           },
         });
         console.log(`[orders/paid] 💰 Released ${pendingToRelease} pending points for ${customerId} at month ${newMonthsActive}`);
@@ -158,7 +158,7 @@ export async function action({ request }: ActionFunctionArgs) {
             orderId,
             type:        "cashback",
             amount:      cashback,
-            description: `Кэшбэк ${Math.round(rate * 100)}% за заказ ${orderName}`,
+            description: `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
           },
         });
         console.log(`[orders/paid] ✅ Cashback=${cashback} (${Math.round(rate*100)}%) for ${customerId}`);
@@ -215,7 +215,7 @@ async function processReferralBonus(
         orderId,
         type:       "referral_bonus",
         amount:     bonus,
-        description: `Реферал ${Math.round(bonusRate * 100)}% — заказ друга ${orderName}`,
+       description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
       },
     });
     await prisma.referral.update({
