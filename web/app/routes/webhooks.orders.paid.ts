@@ -56,6 +56,15 @@ export async function action({ request }: ActionFunctionArgs) {
   const MAIN_SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
   try {
+    // ✅ Защита от дублей в самом начале
+    const existingOrder = await prisma.pointsTransaction.findFirst({
+      where: { orderId, type: { in: ['cashback', 'cashback_pending', 'cashback_released', 'referral_bonus'] } }
+    });
+    if (existingOrder) {
+      console.log(`[orders/paid] ⚠️ Already processed order: ${orderName}`);
+      return new Response("OK", { status: 200 });
+    }
+
     const sub = await prisma.subscription.findFirst({
       where: { shop: MAIN_SHOP, customerId },
     });
@@ -126,15 +135,6 @@ export async function action({ request }: ActionFunctionArgs) {
     const rate     = getCashbackRate(newMonthsActive);
     const cashback = Math.round(orderTotal * rate);
     const pending  = isPending(newMonthsActive);
-
-    const existingCashback = await prisma.pointsTransaction.findFirst({
-      where: { orderId, customerId, type: { in: ['cashback', 'cashback_pending'] } }
-    });
-    if (existingCashback) {
-      console.log(`[orders/paid] ⚠️ Cashback already processed for orderId=${orderId}`);
-      await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, wallet.id);
-      return new Response("OK", { status: 200 });
-    }
 
     if (cashback > 0) {
       if (pending) {
