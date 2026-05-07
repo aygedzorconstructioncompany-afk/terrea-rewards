@@ -69,32 +69,56 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { shop: MAIN_SHOP, customerId },
     });
 
-if (!sub || sub.status !== "active") {
-      console.log(`[orders/paid] No active subscription for ${customerId} — checking referral only`);
+async function processReferralBonusWithStatus(
+  shop: string, customerId: string, orderId: string,
+  orderName: string, orderTotal: number, walletId: string,
+  originalStatus: string, referralId: string
+) {
+  try {
+    const referral = await prisma.referral.findFirst({
+      where: { refereeId: customerId },
+    });
+    if (!referral) return;
 
-      // ✅ Атомарная защита — меняем статус реферала с pending на processing
-      const referral = await prisma.referral.findFirst({
-        where: { refereeId: customerId }
-      });
-      if (!referral) return new Response("OK", { status: 200 });
+    const referrerWallet = await prisma.wallet.findFirst({
+      where: { customerId: referral.referrerId },
+    });
+    if (!referrerWallet) return;
 
-      const lockedReferral = await prisma.referral.updateMany({
-        where: { refereeId: customerId, status: referral.status },
-        data: { status: referral.status === 'pending' ? 'processing' : 'processing_next' }
-      });
-      if (lockedReferral.count === 0) {
-        console.log(`[orders/paid] ⚠️ Referral race condition for ${customerId}`);
-        return new Response("OK", { status: 200 });
-      }
+    const isFirstOrder = originalStatus === "pending";
+    const bonusRate    = isFirstOrder ? 0.15 : 0.05;
+    const bonus        = Math.round(orderTotal * bonusRate);
+    if (bonus <= 0) return;
 
-      const refWallet = await prisma.wallet.findFirst({
-        where: { customerId },
-      });
-      if (refWallet) {
-        await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, refWallet.id);
-      }
-      return new Response("OK", { status: 200 });
-    }
+    await prisma.wallet.update({
+      where: { shop_customer: { shop, customerId: referral.referrerId } },
+      data:  { balance: { increment: bonus } },
+    });
+    await prisma.pointsTransaction.create({
+      data: {
+        walletId:   referrerWallet.id,
+        shop,
+        customerId: referral.referrerId,
+        orderId,
+        type:       "referral_bonus",
+        amount:     bonus,
+        description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
+      },
+    });
+    await prisma.referral.update({
+      where: { id: referralId },
+      data: {
+        status:          "active",
+        firstOrderBonus: isFirstOrder ? bonus : referral.firstOrderBonus,
+        totalBonus:      { increment: bonus },
+        completedAt:     isFirstOrder ? new Date() : referral.completedAt,
+      },
+    });
+    console.log(`[referral] ✅ bonus=${bonus} to referrer=${referral.referrerId}`);
+  } catch (e: any) {
+    console.error("[referral] Error:", e.message);
+  }
+}
 
     const newMonthsActive = sub.monthsActive + 1;
     const newTier = getTier(newMonthsActive);
