@@ -123,8 +123,14 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
 
-    const rate     = getCashbackRate(newMonthsActive);
-    const cashback = Math.round(orderTotal * rate);
+const existingCashback = await prisma.pointsTransaction.findFirst({
+  where: { orderId, customerId, type: { in: ['cashback', 'cashback_pending'] } }
+});
+if (existingCashback) {
+  console.log(`[orders/paid] ⚠️ Cashback already processed for orderId=${orderId}`);
+  await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, wallet.id);
+  return new Response("OK", { status: 200 });
+}
     const pending  = isPending(newMonthsActive);
 
     if (cashback > 0) {
