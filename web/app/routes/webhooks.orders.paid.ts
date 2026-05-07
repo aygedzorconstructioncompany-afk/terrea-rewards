@@ -69,15 +69,21 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { shop: MAIN_SHOP, customerId },
     });
 
-  if (!sub || sub.status !== "active") {
+if (!sub || sub.status !== "active") {
       console.log(`[orders/paid] No active subscription for ${customerId} — checking referral only`);
 
-      // ✅ Защита от дублей для реферала
-      const existingRef = await prisma.pointsTransaction.findFirst({
-        where: { orderId, type: "referral_bonus" }
+      // ✅ Атомарная защита — меняем статус реферала с pending на processing
+      const referral = await prisma.referral.findFirst({
+        where: { refereeId: customerId }
       });
-      if (existingRef) {
-        console.log(`[orders/paid] ⚠️ Referral already processed for orderId=${orderId}`);
+      if (!referral) return new Response("OK", { status: 200 });
+
+      const lockedReferral = await prisma.referral.updateMany({
+        where: { refereeId: customerId, status: referral.status },
+        data: { status: referral.status === 'pending' ? 'processing' : 'processing_next' }
+      });
+      if (lockedReferral.count === 0) {
+        console.log(`[orders/paid] ⚠️ Referral race condition for ${customerId}`);
         return new Response("OK", { status: 200 });
       }
 
