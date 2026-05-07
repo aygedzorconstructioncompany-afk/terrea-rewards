@@ -9,7 +9,7 @@ function getCashbackRate(monthsActive: number): number {
 }
 
 function isPending(monthsActive: number): boolean {
-  return monthsActive < 10;
+  return monthsActive < 10; 
 }
 
 function getPendingDescription(monthsActive: number, rate: number, orderName: string): string {
