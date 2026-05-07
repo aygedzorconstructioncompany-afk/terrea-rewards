@@ -1,10 +1,10 @@
-  import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs } from "react-router";
 import prisma from "../db.server";
 
 function getCashbackRate(monthsActive: number): number {
   if (monthsActive >= 10) return 0.20;
-  if (monthsActive >= 7)  return 0.20;
-  if (monthsActive >= 4)  return 0.15;
+  if (monthsActive >= 7) return 0.20;
+  if (monthsActive >= 4) return 0.15;
   return 0.10;
 }
 
@@ -17,19 +17,27 @@ function getPendingDescription(
   rate: number,
   orderName: string
 ): string {
-  if (monthsActive < 4)
-    return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 4)`;
+  if (monthsActive < 4) {
+    return `Cashback ${Math.round(
+      rate * 100
+    )}% for order ${orderName} (pending, paid on month 4)`;
+  }
 
-  if (monthsActive < 7)
-    return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 7)`;
+  if (monthsActive < 7) {
+    return `Cashback ${Math.round(
+      rate * 100
+    )}% for order ${orderName} (pending, paid on month 7)`;
+  }
 
-  return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 10)`;
+  return `Cashback ${Math.round(
+    rate * 100
+  )}% for order ${orderName} (pending, paid on month 10)`;
 }
 
 function getTier(monthsActive: number): string {
   if (monthsActive >= 10) return "belong+";
-  if (monthsActive >= 7)  return "belong";
-  if (monthsActive >= 4)  return "stay";
+  if (monthsActive >= 7) return "belong";
+  if (monthsActive >= 4) return "stay";
   return "start";
 }
 
@@ -46,9 +54,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
   const customerId = String(payload.customer?.id || "");
   const orderTotal = parseFloat(payload.subtotal_price || "0");
-  const orderId    = String(payload.id || "");
-  const orderName  = payload.name || "";
-  const tags       = (payload.tags || "").toLowerCase();
+  const orderId = String(payload.id || "");
+  const orderName = payload.name || "";
+  const tags = (payload.tags || "").toLowerCase();
   const sourceName = (payload.source_name || "").toLowerCase();
 
   // skip subscription orders
@@ -268,17 +276,21 @@ export async function action({ request }: ActionFunctionArgs) {
           },
         });
 
-        await prisma.pointsTransaction.create({
-          data: {
-            walletId: wallet.id,
-            shop: MAIN_SHOP,
-            customerId,
-            orderId,
-            type: "cashback_released",
-            amount: pendingToRelease,
-            description: `Cashback released at month ${newMonthsActive}`,
-          },
-        });
+        try {
+          await prisma.pointsTransaction.create({
+            data: {
+              walletId: wallet.id,
+              shop: MAIN_SHOP,
+              customerId,
+              orderId,
+              type: "cashback_released",
+              amount: pendingToRelease,
+              description: `Cashback released at month ${newMonthsActive}`,
+            },
+          });
+        } catch {
+          console.log("[cashback] duplicate prevented");
+        }
 
         console.log(
           `[orders/paid] 💰 Released ${pendingToRelease} pending points`
@@ -292,9 +304,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const rate = getCashbackRate(newMonthsActive);
 
-    const cashback = Number(
-      (orderTotal * rate).toFixed(2)
-    );
+    const cashback = Math.round(orderTotal * rate);
 
     const pending = isPending(newMonthsActive);
 
@@ -312,21 +322,25 @@ export async function action({ request }: ActionFunctionArgs) {
           },
         });
 
-        await prisma.pointsTransaction.create({
-          data: {
-            walletId: wallet.id,
-            shop: MAIN_SHOP,
-            customerId,
-            orderId,
-            type: "cashback_pending",
-            amount: cashback,
-            description: getPendingDescription(
-              newMonthsActive,
-              rate,
-              orderName
-            ),
-          },
-        });
+        try {
+          await prisma.pointsTransaction.create({
+            data: {
+              walletId: wallet.id,
+              shop: MAIN_SHOP,
+              customerId,
+              orderId,
+              type: "cashback_pending",
+              amount: cashback,
+              description: getPendingDescription(
+                newMonthsActive,
+                rate,
+                orderName
+              ),
+            },
+          });
+        } catch {
+          console.log("[cashback_pending] duplicate prevented");
+        }
 
         console.log(
           `[orders/paid] ⏳ Pending cashback=${cashback}`
@@ -347,17 +361,23 @@ export async function action({ request }: ActionFunctionArgs) {
           },
         });
 
-        await prisma.pointsTransaction.create({
-          data: {
-            walletId: wallet.id,
-            shop: MAIN_SHOP,
-            customerId,
-            orderId,
-            type: "cashback",
-            amount: cashback,
-            description: `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
-          },
-        });
+        try {
+          await prisma.pointsTransaction.create({
+            data: {
+              walletId: wallet.id,
+              shop: MAIN_SHOP,
+              customerId,
+              orderId,
+              type: "cashback",
+              amount: cashback,
+              description: `Cashback ${Math.round(
+                rate * 100
+              )}% for order ${orderName}`,
+            },
+          });
+        } catch {
+          console.log("[cashback] duplicate prevented");
+        }
 
         console.log(
           `[orders/paid] ✅ Cashback=${cashback}`
@@ -396,29 +416,6 @@ async function processReferralBonus(
   walletId: string
 ) {
   try {
-    // =========================
-    // DUPLICATE REFERRAL CHECK
-    // =========================
-
-    const existing = await prisma.pointsTransaction.findFirst({
-      where: {
-        orderId,
-        type: "referral_bonus",
-      },
-    });
-
-    if (existing) {
-      console.log(
-        `[referral] ⚠️ Already processed orderId=${orderId}`
-      );
-
-      return;
-    }
-
-    // =========================
-    // FIND REFERRAL
-    // =========================
-
     const referral = await prisma.referral.findFirst({
       where: {
         refereeId: customerId,
@@ -432,10 +429,6 @@ async function processReferralBonus(
 
       return;
     }
-
-    // =========================
-    // FIND REFERRER WALLET
-    // =========================
 
     const referrerWallet = await prisma.wallet.findFirst({
       where: {
@@ -451,25 +444,13 @@ async function processReferralBonus(
       return;
     }
 
-    // =========================
-    // BONUS
-    // =========================
-
     const isFirstOrder = referral.status === "pending";
 
-    const bonusRate = isFirstOrder
-      ? 0.15
-      : 0.05;
+    const bonusRate = isFirstOrder ? 0.15 : 0.05;
 
-    const bonus = Number(
-      (orderTotal * bonusRate).toFixed(2)
-    );
+    const bonus = Math.round(orderTotal * bonusRate);
 
     if (bonus <= 0) return;
-
-    // =========================
-    // UPDATE WALLET
-    // =========================
 
     await prisma.wallet.update({
       where: {
@@ -486,27 +467,24 @@ async function processReferralBonus(
       },
     });
 
-    // =========================
-    // TRANSACTION
-    // =========================
-
-    await prisma.pointsTransaction.create({
-      data: {
-        walletId: referrerWallet.id,
-        shop,
-        customerId: referral.referrerId,
-        orderId,
-        type: "referral_bonus",
-        amount: bonus,
-        description: `Referral ${Math.round(
-          bonusRate * 100
-        )}% — friend's order ${orderName}`,
-      },
-    });
-
-    // =========================
-    // UPDATE REFERRAL
-    // =========================
+    try {
+      await prisma.pointsTransaction.create({
+        data: {
+          walletId: referrerWallet.id,
+          shop,
+          customerId: referral.referrerId,
+          orderId,
+          type: "referral_bonus",
+          amount: bonus,
+          description: `Referral ${Math.round(
+            bonusRate * 100
+          )}% — friend's order ${orderName}`,
+        },
+      });
+    } catch {
+      console.log("[referral] duplicate prevented");
+      return;
+    }
 
     await prisma.referral.update({
       where: {
