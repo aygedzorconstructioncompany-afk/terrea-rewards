@@ -69,8 +69,18 @@ export async function action({ request }: ActionFunctionArgs) {
       where: { shop: MAIN_SHOP, customerId },
     });
 
-    if (!sub || sub.status !== "active") {
+  if (!sub || sub.status !== "active") {
       console.log(`[orders/paid] No active subscription for ${customerId} — checking referral only`);
+
+      // ✅ Защита от дублей для реферала
+      const existingRef = await prisma.pointsTransaction.findFirst({
+        where: { orderId, type: "referral_bonus" }
+      });
+      if (existingRef) {
+        console.log(`[orders/paid] ⚠️ Referral already processed for orderId=${orderId}`);
+        return new Response("OK", { status: 200 });
+      }
+
       const refWallet = await prisma.wallet.findFirst({
         where: { customerId },
       });
