@@ -123,15 +123,18 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
 
-const existingCashback = await prisma.pointsTransaction.findFirst({
-  where: { orderId, customerId, type: { in: ['cashback', 'cashback_pending'] } }
-});
-if (existingCashback) {
-  console.log(`[orders/paid] ⚠️ Cashback already processed for orderId=${orderId}`);
-  await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, wallet.id);
-  return new Response("OK", { status: 200 });
-}
+    const rate     = getCashbackRate(newMonthsActive);
+    const cashback = Math.round(orderTotal * rate);
     const pending  = isPending(newMonthsActive);
+
+    const existingCashback = await prisma.pointsTransaction.findFirst({
+      where: { orderId, customerId, type: { in: ['cashback', 'cashback_pending'] } }
+    });
+    if (existingCashback) {
+      console.log(`[orders/paid] ⚠️ Cashback already processed for orderId=${orderId}`);
+      await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, wallet.id);
+      return new Response("OK", { status: 200 });
+    }
 
     if (cashback > 0) {
       if (pending) {
@@ -221,7 +224,7 @@ async function processReferralBonus(
         orderId,
         type:       "referral_bonus",
         amount:     bonus,
-       description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
+        description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
       },
     });
     await prisma.referral.update({
