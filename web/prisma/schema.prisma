@@ -8,95 +8,151 @@ datasource db {
 }
 
 model Wallet {
-  id           String @id @default(cuid())
-  shop         String
-  customerId   String
-  balance      Int    @default(0)
-  totalSpent   Float  @default(0)
-  tier         String @default("Basic")
-  referralCode String? @unique
-  referredBy   String?
-  transactions PointsTransaction[]
+  id            String @id @default(cuid())
+  shop          String
+  customerId    String
+  balance       Int    @default(0)
+  totalSpent    Float  @default(0)
+  tier          String @default("Basic")
+  referralCode  String? @unique
+  referredBy    String?
+
+  transactions  PointsTransaction[]
 
   @@unique([shop, customerId], name: "shop_customer")
 }
 
 model PointsTransaction {
   id          String   @id @default(cuid())
+
   walletId    String
   wallet      Wallet   @relation(fields: [walletId], references: [id])
+
   shop        String
   customerId  String
+
   orderId     String?
+
   type        String
+
   amount      Int       @default(0)
+
   description String?
+
   expiresAt   DateTime?
+
   createdAt   DateTime  @default(now())
+
+  @@unique([orderId, type])
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
-  refreshToken        String?
-  refreshTokenExpires DateTime?
+  id                   String    @id
+  shop                 String
+  state                String
+  isOnline             Boolean   @default(false)
+
+  scope                String?
+
+  expires              DateTime?
+
+  accessToken          String
+
+  userId               BigInt?
+
+  firstName            String?
+
+  lastName             String?
+
+  email                String?
+
+  accountOwner         Boolean   @default(false)
+
+  locale               String?
+
+  collaborator         Boolean?  @default(false)
+
+  emailVerified        Boolean?  @default(false)
+
+  refreshToken         String?
+
+  refreshTokenExpires  DateTime?
 }
 
 model Discount {
   id          String   @id @default(cuid())
+
   code        String   @unique
+
   customerId  String
+
   shop        String
+
   amount      Float
+
   used        Boolean  @default(false)
+
   expiresAt   DateTime
+
   createdAt   DateTime @default(now())
 }
 
 model Referral {
-  id              String    @id @default(cuid())
-  shop            String
-  referrerCode    String    @unique
-  referrerId      String
-  refereeId       String?
-  status          String    @default("pending")
-  firstOrderBonus Int       @default(0)
-  totalBonus      Int       @default(0)
-  createdAt       DateTime  @default(now())
-  completedAt     DateTime?
+  id                String    @id @default(cuid())
+
+  shop              String
+
+  referrerCode      String    @unique
+
+  referrerId        String
+
+  refereeId         String?
+
+  status            String    @default("pending")
+
+  firstOrderBonus   Int       @default(0)
+
+  totalBonus        Int       @default(0)
+
+  createdAt         DateTime  @default(now())
+
+  completedAt       DateTime?
 
   @@index([referrerId])
+
   @@index([refereeId])
 }
 
 model Subscription {
-  id              String    @id @default(cuid())
-  shop            String
-  customerId      String
-  status          String    @default("active")
-  startedAt       DateTime  @default(now())
-  lastOrderAt     DateTime?
-  nextChargeDate  DateTime?
-  daysLeft        Int?
-  monthsActive    Int       @default(0)
-  currentTier     String    @default("bronze")
-  pendingPoints   Int       @default(0)
-  lastBillingMonth String?
-  subscriptionContractId String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id                        String    @id @default(cuid())
+
+  shop                      String
+
+  customerId                String
+
+  status                    String    @default("active")
+
+  startedAt                 DateTime  @default(now())
+
+  lastOrderAt               DateTime?
+
+  nextChargeDate            DateTime?
+
+  daysLeft                  Int?
+
+  monthsActive              Int       @default(0)
+
+  currentTier               String    @default("bronze")
+
+  pendingPoints             Int       @default(0)
+
+  lastBillingMonth          String?
+
+  subscriptionContractId    String?
+
+  createdAt                 DateTime  @default(now())
+
+  updatedAt                 DateTime  @updatedAt
+
   @@unique([shop, customerId])
 }
