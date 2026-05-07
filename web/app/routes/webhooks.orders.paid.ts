@@ -93,14 +93,20 @@ export async function action({ request }: ActionFunctionArgs) {
     const newMonthsActive = sub.monthsActive + 1;
     const newTier = getTier(newMonthsActive);
 
-    await prisma.subscription.update({
-      where: { id: sub.id },
-      data: {
-        monthsActive: newMonthsActive,
-        currentTier: newTier,
-        lastOrderAt: new Date(),
-      },
-    });
+  // Атомарное обновление — только если monthsActive не изменился
+const updatedSub = await prisma.subscription.updateMany({
+  where: { id: sub.id, monthsActive: sub.monthsActive },
+  data: {
+    monthsActive: sub.monthsActive + 1,
+    currentTier: getTier(sub.monthsActive + 1),
+    lastOrderAt: new Date(),
+  },
+});
+
+if (updatedSub.count === 0) {
+  console.log(`[orders/paid] ⚠️ Race condition detected for ${customerId} — skipping`);
+  return new Response("OK", { status: 200 });
+}
 
     console.log(`[orders/paid] 📅 monthsActive=${newMonthsActive} tier=${newTier} for ${customerId}`);
 
