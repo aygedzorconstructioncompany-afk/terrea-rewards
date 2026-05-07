@@ -1,4 +1,4 @@
-import type { ActionFunctionArgs } from "react-router";
+  import type { ActionFunctionArgs } from "react-router";
 import prisma from "../db.server";
 
 function getCashbackRate(monthsActive: number): number {
@@ -9,13 +9,21 @@ function getCashbackRate(monthsActive: number): number {
 }
 
 function isPending(monthsActive: number): boolean {
-  return monthsActive < 10; 
+  return monthsActive < 10;
 }
 
-function getPendingDescription(monthsActive: number, rate: number, orderName: string): string {
-  if (monthsActive < 4)  return `Cashback ${Math.round(rate*100)}% for order ${orderName} (pending, paid on month 4)`;
-  if (monthsActive < 7)  return `Cashback ${Math.round(rate*100)}% for order ${orderName} (pending, paid on month 7)`;
-  return `Cashback ${Math.round(rate*100)}% for order ${orderName} (pending, paid on month 10)`;
+function getPendingDescription(
+  monthsActive: number,
+  rate: number,
+  orderName: string
+): string {
+  if (monthsActive < 4)
+    return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 4)`;
+
+  if (monthsActive < 7)
+    return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 7)`;
+
+  return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 10)`;
 }
 
 function getTier(monthsActive: number): string {
@@ -29,6 +37,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const shop = request.headers.get("x-shopify-shop-domain") || "";
 
   let payload: any;
+
   try {
     payload = await request.json();
   } catch {
@@ -42,247 +51,489 @@ export async function action({ request }: ActionFunctionArgs) {
   const tags       = (payload.tags || "").toLowerCase();
   const sourceName = (payload.source_name || "").toLowerCase();
 
-  if (tags.includes("subscription") || sourceName === "subscription_contract" || sourceName === "recharge") {
-    console.log(`[orders/paid] ⏭️ Subscription order ${orderName} — skipping`);
+  // skip subscription orders
+  if (
+    tags.includes("subscription") ||
+    sourceName === "subscription_contract" ||
+    sourceName === "recharge"
+  ) {
+    console.log(
+      `[orders/paid] ⏭️ Subscription order ${orderName} — skipping`
+    );
+
     return new Response("OK", { status: 200 });
   }
 
-  console.log(`[orders/paid] shop=${shop} customer=${customerId} order=${orderName} total=${orderTotal}`);
+  console.log(
+    `[orders/paid] shop=${shop} customer=${customerId} order=${orderName} total=${orderTotal}`
+  );
 
   if (!customerId || !shop || orderTotal <= 0) {
     return new Response("OK", { status: 200 });
   }
 
-  const MAIN_SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+  const MAIN_SHOP =
+    process.env.SHOPIFY_SHOP_DOMAIN ||
+    "terrea-home-rituals.myshopify.com";
 
   try {
-    // ✅ Защита от дублей в самом начале
+    // =========================
+    // DUPLICATE PROTECTION
+    // =========================
+
     const existingOrder = await prisma.pointsTransaction.findFirst({
-      where: { orderId, type: { in: ['cashback', 'cashback_pending', 'cashback_released', 'referral_bonus'] } }
+      where: {
+        orderId,
+        type: {
+          in: [
+            "cashback",
+            "cashback_pending",
+            "cashback_released",
+          ],
+        },
+      },
     });
+
     if (existingOrder) {
-      console.log(`[orders/paid] ⚠️ Already processed order: ${orderName}`);
+      console.log(
+        `[orders/paid] ⚠️ Already processed order: ${orderName}`
+      );
+
       return new Response("OK", { status: 200 });
     }
 
+    // =========================
+    // SUBSCRIPTION
+    // =========================
+
     const sub = await prisma.subscription.findFirst({
-      where: { shop: MAIN_SHOP, customerId },
+      where: {
+        shop: MAIN_SHOP,
+        customerId,
+      },
     });
 
-async function processReferralBonusWithStatus(
-  shop: string, customerId: string, orderId: string,
-  orderName: string, orderTotal: number, walletId: string,
-  originalStatus: string, referralId: string
-) {
-  try {
-    const referral = await prisma.referral.findFirst({
-      where: { refereeId: customerId },
-    });
-    if (!referral) return;
+    // ==========================================
+    // NO SUBSCRIPTION → STILL PROCESS REFERRAL
+    // ==========================================
 
-    const referrerWallet = await prisma.wallet.findFirst({
-      where: { customerId: referral.referrerId },
-    });
-    if (!referrerWallet) return;
+    if (!sub) {
+      console.log(
+        `[orders/paid] ⚠️ No subscription found for ${customerId}`
+      );
 
-    const isFirstOrder = originalStatus === "pending";
-    const bonusRate    = isFirstOrder ? 0.15 : 0.05;
-    const bonus        = Math.round(orderTotal * bonusRate);
-    if (bonus <= 0) return;
+      const wallet = await prisma.wallet.upsert({
+        where: {
+          shop_customer: {
+            shop: MAIN_SHOP,
+            customerId,
+          },
+        },
 
-    await prisma.wallet.update({
-      where: { shop_customer: { shop, customerId: referral.referrerId } },
-      data:  { balance: { increment: bonus } },
-    });
-    await prisma.pointsTransaction.create({
-      data: {
-        walletId:   referrerWallet.id,
-        shop,
-        customerId: referral.referrerId,
+        create: {
+          shop: MAIN_SHOP,
+          customerId,
+          balance: 0,
+          totalSpent: orderTotal,
+          tier: "start",
+        },
+
+        update: {
+          totalSpent: {
+            increment: orderTotal,
+          },
+        },
+      });
+
+      await processReferralBonus(
+        MAIN_SHOP,
+        customerId,
         orderId,
-        type:       "referral_bonus",
-        amount:     bonus,
-        description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
-      },
-    });
-    await prisma.referral.update({
-      where: { id: referralId },
-      data: {
-        status:          "active",
-        firstOrderBonus: isFirstOrder ? bonus : referral.firstOrderBonus,
-        totalBonus:      { increment: bonus },
-        completedAt:     isFirstOrder ? new Date() : referral.completedAt,
-      },
-    });
-    console.log(`[referral] ✅ bonus=${bonus} to referrer=${referral.referrerId}`);
-  } catch (e: any) {
-    console.error("[referral] Error:", e.message);
-  }
-}
+        orderName,
+        orderTotal,
+        wallet.id
+      );
+
+      return new Response("OK", { status: 200 });
+    }
+
+    // =========================
+    // MONTHS / TIER
+    // =========================
 
     const newMonthsActive = sub.monthsActive + 1;
     const newTier = getTier(newMonthsActive);
 
-  // Атомарное обновление — только если monthsActive не изменился
-const updatedSub = await prisma.subscription.updateMany({
-  where: { id: sub.id, monthsActive: sub.monthsActive },
-  data: {
-    monthsActive: sub.monthsActive + 1,
-    currentTier: getTier(sub.monthsActive + 1),
-    lastOrderAt: new Date(),
-  },
-});
+    // atomic update
+    const updatedSub = await prisma.subscription.updateMany({
+      where: {
+        id: sub.id,
+        monthsActive: sub.monthsActive,
+      },
 
-if (updatedSub.count === 0) {
-  console.log(`[orders/paid] ⚠️ Race condition detected for ${customerId} — skipping`);
-  return new Response("OK", { status: 200 });
-}
+      data: {
+        monthsActive: sub.monthsActive + 1,
+        currentTier: getTier(sub.monthsActive + 1),
+        lastOrderAt: new Date(),
+      },
+    });
 
-    console.log(`[orders/paid] 📅 monthsActive=${newMonthsActive} tier=${newTier} for ${customerId}`);
+    if (updatedSub.count === 0) {
+      console.log(
+        `[orders/paid] ⚠️ Race condition detected for ${customerId}`
+      );
+
+      return new Response("OK", { status: 200 });
+    }
+
+    console.log(
+      `[orders/paid] 📅 monthsActive=${newMonthsActive} tier=${newTier} for ${customerId}`
+    );
+
+    // =========================
+    // WALLET
+    // =========================
 
     await prisma.wallet.upsert({
-      where:  { shop_customer: { shop: MAIN_SHOP, customerId } },
-      create: { shop: MAIN_SHOP, customerId, balance: 0, totalSpent: orderTotal, tier: newTier },
-      update: { tier: newTier, totalSpent: { increment: orderTotal } },
+      where: {
+        shop_customer: {
+          shop: MAIN_SHOP,
+          customerId,
+        },
+      },
+
+      create: {
+        shop: MAIN_SHOP,
+        customerId,
+        balance: 0,
+        totalSpent: orderTotal,
+        tier: newTier,
+      },
+
+      update: {
+        tier: newTier,
+        totalSpent: {
+          increment: orderTotal,
+        },
+      },
     });
 
     const wallet = await prisma.wallet.findUnique({
-      where: { shop_customer: { shop: MAIN_SHOP, customerId } },
+      where: {
+        shop_customer: {
+          shop: MAIN_SHOP,
+          customerId,
+        },
+      },
     });
 
-    if (!wallet) return new Response("OK", { status: 200 });
+    if (!wallet) {
+      return new Response("OK", { status: 200 });
+    }
 
-    if (newMonthsActive === 4 || newMonthsActive === 7 || newMonthsActive === 10) {
+    // =========================
+    // RELEASE PENDING
+    // =========================
+
+    if (
+      newMonthsActive === 4 ||
+      newMonthsActive === 7 ||
+      newMonthsActive === 10
+    ) {
       const pendingToRelease = sub.pendingPoints;
+
       if (pendingToRelease > 0) {
         await prisma.wallet.update({
-          where: { shop_customer: { shop: MAIN_SHOP, customerId } },
-          data: { balance: { increment: pendingToRelease } },
+          where: {
+            shop_customer: {
+              shop: MAIN_SHOP,
+              customerId,
+            },
+          },
+
+          data: {
+            balance: {
+              increment: pendingToRelease,
+            },
+          },
         });
+
         await prisma.subscription.update({
-          where: { id: sub.id },
-          data: { pendingPoints: 0 },
+          where: {
+            id: sub.id,
+          },
+
+          data: {
+            pendingPoints: 0,
+          },
         });
+
         await prisma.pointsTransaction.create({
           data: {
-            walletId:    wallet.id,
-            shop:        MAIN_SHOP,
+            walletId: wallet.id,
+            shop: MAIN_SHOP,
             customerId,
             orderId,
-            type:        "cashback_released",
-            amount:      pendingToRelease,
+            type: "cashback_released",
+            amount: pendingToRelease,
             description: `Cashback released at month ${newMonthsActive}`,
           },
         });
-        console.log(`[orders/paid] 💰 Released ${pendingToRelease} pending points for ${customerId} at month ${newMonthsActive}`);
+
+        console.log(
+          `[orders/paid] 💰 Released ${pendingToRelease} pending points`
+        );
       }
     }
 
-    const rate     = getCashbackRate(newMonthsActive);
-    const cashback = Math.round(orderTotal * rate);
-    const pending  = isPending(newMonthsActive);
+    // =========================
+    // CASHBACK
+    // =========================
+
+    const rate = getCashbackRate(newMonthsActive);
+
+    const cashback = Number(
+      (orderTotal * rate).toFixed(2)
+    );
+
+    const pending = isPending(newMonthsActive);
 
     if (cashback > 0) {
       if (pending) {
         await prisma.subscription.update({
-          where: { id: sub.id },
-          data:  { pendingPoints: { increment: cashback } },
-        });
-        await prisma.pointsTransaction.create({
+          where: {
+            id: sub.id,
+          },
+
           data: {
-            walletId:    wallet.id,
-            shop:        MAIN_SHOP,
-            customerId,
-            orderId,
-            type:        "cashback_pending",
-            amount:      cashback,
-            description: getPendingDescription(newMonthsActive, rate, orderName),
+            pendingPoints: {
+              increment: cashback,
+            },
           },
         });
-        console.log(`[orders/paid] ⏳ Pending cashback=${cashback} for ${customerId} (month ${newMonthsActive})`);
-      } else {
-        await prisma.wallet.update({
-          where: { shop_customer: { shop: MAIN_SHOP, customerId } },
-          data:  { balance: { increment: cashback } },
-        });
+
         await prisma.pointsTransaction.create({
           data: {
-            walletId:    wallet.id,
-            shop:        MAIN_SHOP,
+            walletId: wallet.id,
+            shop: MAIN_SHOP,
             customerId,
             orderId,
-            type:        "cashback",
-            amount:      cashback,
+            type: "cashback_pending",
+            amount: cashback,
+            description: getPendingDescription(
+              newMonthsActive,
+              rate,
+              orderName
+            ),
+          },
+        });
+
+        console.log(
+          `[orders/paid] ⏳ Pending cashback=${cashback}`
+        );
+      } else {
+        await prisma.wallet.update({
+          where: {
+            shop_customer: {
+              shop: MAIN_SHOP,
+              customerId,
+            },
+          },
+
+          data: {
+            balance: {
+              increment: cashback,
+            },
+          },
+        });
+
+        await prisma.pointsTransaction.create({
+          data: {
+            walletId: wallet.id,
+            shop: MAIN_SHOP,
+            customerId,
+            orderId,
+            type: "cashback",
+            amount: cashback,
             description: `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
           },
         });
-        console.log(`[orders/paid] ✅ Cashback=${cashback} (${Math.round(rate*100)}%) for ${customerId}`);
+
+        console.log(
+          `[orders/paid] ✅ Cashback=${cashback}`
+        );
       }
     }
 
-    await processReferralBonus(MAIN_SHOP, customerId, orderId, orderName, orderTotal, wallet.id);
+    // =========================
+    // REFERRAL BONUS
+    // =========================
+
+    await processReferralBonus(
+      MAIN_SHOP,
+      customerId,
+      orderId,
+      orderName,
+      orderTotal,
+      wallet.id
+    );
 
     return new Response("OK", { status: 200 });
 
   } catch (e: any) {
     console.error("[orders/paid] Error:", e.message);
+
     return new Response("Error", { status: 500 });
   }
 }
 
 async function processReferralBonus(
-  shop: string, customerId: string, orderId: string,
-  orderName: string, orderTotal: number, walletId: string
+  shop: string,
+  customerId: string,
+  orderId: string,
+  orderName: string,
+  orderTotal: number,
+  walletId: string
 ) {
   try {
+    // =========================
+    // DUPLICATE REFERRAL CHECK
+    // =========================
+
     const existing = await prisma.pointsTransaction.findFirst({
-      where: { orderId, type: "referral_bonus" }
+      where: {
+        orderId,
+        type: "referral_bonus",
+      },
     });
+
     if (existing) {
-      console.log(`[referral] ⚠️ Already processed orderId=${orderId}`);
+      console.log(
+        `[referral] ⚠️ Already processed orderId=${orderId}`
+      );
+
       return;
     }
 
+    // =========================
+    // FIND REFERRAL
+    // =========================
+
     const referral = await prisma.referral.findFirst({
-      where: { refereeId: customerId },
+      where: {
+        refereeId: customerId,
+      },
     });
-    if (!referral) return;
+
+    if (!referral) {
+      console.log(
+        `[referral] ❌ No referral found for ${customerId}`
+      );
+
+      return;
+    }
+
+    // =========================
+    // FIND REFERRER WALLET
+    // =========================
 
     const referrerWallet = await prisma.wallet.findFirst({
-      where: { customerId: referral.referrerId },
+      where: {
+        customerId: referral.referrerId,
+      },
     });
-    if (!referrerWallet) return;
+
+    if (!referrerWallet) {
+      console.log(
+        `[referral] ❌ No wallet for referrer=${referral.referrerId}`
+      );
+
+      return;
+    }
+
+    // =========================
+    // BONUS
+    // =========================
 
     const isFirstOrder = referral.status === "pending";
-    const bonusRate    = isFirstOrder ? 0.15 : 0.05;
-    const bonus        = Math.round(orderTotal * bonusRate);
+
+    const bonusRate = isFirstOrder
+      ? 0.15
+      : 0.05;
+
+    const bonus = Number(
+      (orderTotal * bonusRate).toFixed(2)
+    );
+
     if (bonus <= 0) return;
 
+    // =========================
+    // UPDATE WALLET
+    // =========================
+
     await prisma.wallet.update({
-      where: { shop_customer: { shop, customerId: referral.referrerId } },
-      data:  { balance: { increment: bonus } },
+      where: {
+        shop_customer: {
+          shop,
+          customerId: referral.referrerId,
+        },
+      },
+
+      data: {
+        balance: {
+          increment: bonus,
+        },
+      },
     });
+
+    // =========================
+    // TRANSACTION
+    // =========================
+
     await prisma.pointsTransaction.create({
       data: {
-        walletId:   referrerWallet.id,
+        walletId: referrerWallet.id,
         shop,
         customerId: referral.referrerId,
         orderId,
-        type:       "referral_bonus",
-        amount:     bonus,
-        description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
+        type: "referral_bonus",
+        amount: bonus,
+        description: `Referral ${Math.round(
+          bonusRate * 100
+        )}% — friend's order ${orderName}`,
       },
     });
+
+    // =========================
+    // UPDATE REFERRAL
+    // =========================
+
     await prisma.referral.update({
-      where: { id: referral.id },
+      where: {
+        id: referral.id,
+      },
+
       data: {
-        status:          "active",
-        firstOrderBonus: isFirstOrder ? bonus : referral.firstOrderBonus,
-        totalBonus:      { increment: bonus },
-        completedAt:     isFirstOrder ? new Date() : referral.completedAt,
+        status: "active",
+
+        firstOrderBonus: isFirstOrder
+          ? bonus
+          : referral.firstOrderBonus,
+
+        totalBonus: {
+          increment: bonus,
+        },
+
+        completedAt: isFirstOrder
+          ? new Date()
+          : referral.completedAt,
       },
     });
-    console.log(`[referral] ✅ bonus=${bonus} to referrer=${referral.referrerId}`);
+
+    console.log(
+      `[referral] ✅ bonus=${bonus} to referrer=${referral.referrerId}`
+    );
+
   } catch (e: any) {
     console.error("[referral] Error:", e.message);
   }
