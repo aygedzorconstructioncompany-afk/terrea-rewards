@@ -6,7 +6,7 @@ function getCashbackRate(monthsActive: number): number {
   if (monthsActive >= 7) return 0.20;
   if (monthsActive >= 4) return 0.15;
   return 0.10;
-}
+} 
 
 function getPendingDescription(
   monthsActive: number,
