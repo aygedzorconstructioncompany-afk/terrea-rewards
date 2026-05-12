@@ -1,5 +1,4 @@
 import { type RouteConfig, route } from "@react-router/dev/routes";
-
 export default [
   route("/app/rewards", "./routes/app.rewards.jsx"),
   route("/app/admin", "./routes/app.admin.tsx"),
@@ -32,4 +31,5 @@ export default [
   route("/api/admin/rates", "./routes/api.admin.rates.ts"),
   route("/api/admin/cache-emails", "./routes/api.admin.cache-emails.ts"),
   route("/api/admin/reset", "./routes/api.admin.reset.ts"),
+  route("/account/subscriptions", "./routes/account.subscriptions.tsx"),
 ] satisfies RouteConfig;
