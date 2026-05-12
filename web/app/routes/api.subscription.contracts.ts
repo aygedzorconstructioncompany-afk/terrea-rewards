@@ -137,14 +137,14 @@ export async function loader({ request }: any) {
         : "unknown";
 
       // ✅ Если в БД есть информация о товаре — используем её
-      const contractLines = s.productTitle ? [{
-        title: s.productTitle,
-        quantity: 1,
-        price: s.productPrice?.toString(),
-        currency: "GBP",
-        image: s.productImage,
-        productHandle: null,
-      }] : lines;
+    const contractLines = s.productTitle ? [{
+  title: s.productTitle,
+  quantity: 1,
+  price: s.productPrice?.toString(),
+  currency: "GBP",
+  image: s.productImage,
+  productHandle: s.productHandle,  // ✅ ИСПОЛЬЗУЕМ СОХРАНЁННЫЙ HANDLE
+}] : lines;
 
       return {
         id: contractNumericId,
