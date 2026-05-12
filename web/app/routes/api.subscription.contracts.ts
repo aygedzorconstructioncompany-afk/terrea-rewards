@@ -62,7 +62,6 @@ async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
 
     const latestOrder = orders[0].node;
     const lines = (latestOrder.lineItems?.edges || []).map((l: any) => {
-      // Try all possible image sources
       const image =
         l.node.variant?.image?.url ||
         l.node.variant?.product?.featuredImage?.url ||
@@ -79,7 +78,6 @@ async function fetchCustomerOrderLines(customerId: string): Promise<any[]> {
       };
     });
 
-    // For lines still missing image, fetch via REST
     await Promise.all(
       lines.map(async (line: any) => {
         if (!line.image && line.productHandle) {
@@ -138,6 +136,16 @@ export async function loader({ request }: any) {
         ? s.subscriptionContractId.replace("gid://shopify/SubscriptionContract/", "")
         : "unknown";
 
+      // ✅ Если в БД есть информация о товаре — используем её
+      const contractLines = s.productTitle ? [{
+        title: s.productTitle,
+        quantity: 1,
+        price: s.productPrice?.toString(),
+        currency: "GBP",
+        image: s.productImage,
+        productHandle: null,
+      }] : lines;
+
       return {
         id: contractNumericId,
         gid: s.subscriptionContractId || "",
@@ -148,7 +156,7 @@ export async function loader({ request }: any) {
         interval: "MONTH",
         intervalCount: 1,
         monthsActive: s.monthsActive,
-        lines,
+        lines: contractLines,
       };
     });
 
