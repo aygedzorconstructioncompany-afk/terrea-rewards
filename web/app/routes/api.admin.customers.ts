@@ -12,15 +12,25 @@ async function getCustomerEmail(customerId: string): Promise<string> {
     console.log("Token exists:", !!token);
     console.log("Fetching customer:", customerId);
 
-    const res = await fetch(`https://${shop}/admin/api/2024-01/customers/${customerId}.json`, {
-      headers: { "X-Shopify-Access-Token": token! },
+    const query = `{
+      customer(id: "gid://shopify/Customer/${customerId}") {
+        email
+      }
+    }`;
+
+    const res = await fetch(`https://${shop}/admin/api/2024-01/graphql.json`, {
+      method: "POST",
+      headers: {
+        "X-Shopify-Access-Token": token!,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ query }),
     });
 
     console.log("Shopify status:", res.status);
     const data = await res.json();
-    console.log("Shopify response:", JSON.stringify(data));
-
-    return data.customer?.email || "";
+    console.log("GraphQL response:", JSON.stringify(data));
+    return data.data?.customer?.email || "";
   } catch (e) {
     console.error("getCustomerEmail error:", e);
     return "";
