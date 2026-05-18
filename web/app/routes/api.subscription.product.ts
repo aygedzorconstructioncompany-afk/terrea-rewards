@@ -1,27 +1,23 @@
 import prisma from "../db.server";
 
-const corsHeaders = (request: any) => {
-  const origin = request.headers.get("Origin") || "*";
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Credentials": "true",
-  };
-};
+const corsHeaders = () => ({
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Credentials": "true",
+});
 
 export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
+    return new Response(null, { status: 204, headers: corsHeaders() });
   }
 
   try {
-    // ✅ Читаем как text чтобы поддержать оба Content-Type
     const text = await request.text();
     const { customer_id, shop, productTitle, productImage, productHandle, productPrice } = JSON.parse(text);
 
     if (!customer_id) {
-      return Response.json({ error: "Missing customer_id" }, { status: 400, headers: corsHeaders(request) });
+      return Response.json({ error: "Missing customer_id" }, { status: 400, headers: corsHeaders() });
     }
 
     const SHOP = shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
@@ -41,14 +37,17 @@ export async function action({ request }: any) {
 
     console.log(`[subscription/product] ✅ Saved: ${productTitle} for ${customerId}`);
 
-    return Response.json({ success: true }, { headers: corsHeaders(request) });
+    return Response.json({ success: true }, { headers: corsHeaders() });
 
   } catch (e: any) {
     console.error("[subscription/product] Error:", e.message);
-    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
+    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders() });
   }
 }
 
 export async function loader({ request }: any) {
-  return Response.json({ ok: true }, { headers: corsHeaders(request) });
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders() });
+  }
+  return Response.json({ ok: true }, { headers: corsHeaders() });
 }
