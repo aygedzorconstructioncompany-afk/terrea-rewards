@@ -16,7 +16,9 @@ export async function action({ request }: any) {
   }
 
   try {
-    const { customer_id, shop, productTitle, productImage, productHandle, productPrice } = await request.json();
+    // ✅ Читаем как text чтобы поддержать оба Content-Type
+    const text = await request.text();
+    const { customer_id, shop, productTitle, productImage, productHandle, productPrice } = JSON.parse(text);
 
     if (!customer_id) {
       return Response.json({ error: "Missing customer_id" }, { status: 400, headers: corsHeaders(request) });
@@ -48,8 +50,5 @@ export async function action({ request }: any) {
 }
 
 export async function loader({ request }: any) {
-  if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: corsHeaders(request) });
-  }
-  return Response.json({ error: "Method not allowed" }, { status: 405, headers: corsHeaders(request) });
+  return Response.json({ ok: true }, { headers: corsHeaders(request) });
 }
