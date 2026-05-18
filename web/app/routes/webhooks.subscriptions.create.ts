@@ -1,20 +1,14 @@
 import type { ActionFunctionArgs } from "react-router";
 import prisma from "../db.server";
 
-const SHOPIFY_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
 const SHOP = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
-async function getProductHandle(productId: string): Promise<string | null> {
-  try {
-    const res = await fetch(`https://${SHOP}/admin/api/2024-01/products/${productId}.json`, {
-      headers: { "X-Shopify-Access-Token": SHOPIFY_TOKEN }
-    });
-    const data = await res.json();
-    return data.product?.handle || null;
-  } catch (e) {
-    console.warn("Could not fetch product handle:", (e as any).message);
-    return null;
-  }
+// ✅ Генерируем handle из title без токена
+function titleToHandle(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -27,17 +21,17 @@ export async function action({ request }: ActionFunctionArgs) {
 
     if (!customerId) return new Response("No customer", { status: 400 });
 
-    // ✅ ИЗВЛЕКАЕМ ИНФОРМАЦИЮ О ТОВАРЕ
-    const productId = payload.billing_policy?.recurring_deliveries?.[0]?.product_id?.toString() || null;
-    const productTitle = payload.billing_policy?.recurring_deliveries?.[0]?.product_title || null;
-    const productImage = payload.billing_policy?.recurring_deliveries?.[0]?.product_image || null;
-    const productPrice = payload.billing_policy?.recurring_deliveries?.[0]?.price || null;
-    
-    // ✅ ПОЛУЧАЕМ HANDLE АВТОМАТИЧЕСКИ
-    let productHandle = null;
-    if (productId) {
-      productHandle = await getProductHandle(productId);
-    }
+    // ✅ Извлекаем информацию о товаре из payload
+    const delivery = payload.billing_policy?.recurring_deliveries?.[0];
+    const productId = delivery?.product_id?.toString() || null;
+    const productTitle = delivery?.product_title || null;
+    const productImage = delivery?.product_image || null;
+    const productPrice = delivery?.price || null;
+
+    // ✅ Handle из title — без токена
+    const productHandle = productTitle ? titleToHandle(productTitle) : null;
+
+    console.log(`[subscriptions/create] customer=${customerId} product=${productTitle} handle=${productHandle}`);
 
     await prisma.wallet.upsert({
       where: { shop_customer: { shop, customerId } },
