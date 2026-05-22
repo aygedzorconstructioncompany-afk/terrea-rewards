@@ -1,6 +1,6 @@
 client_id = "ebec796aba07daa291decb4aa209eee5"
 name = "terrea-rewards-prod"
-application_url = "https://terrea-rewards-1.onrender.com"
+application_url = "https://terrea-rewards-1.onrender.com/app/admin"
 embedded = true
 
 [webhooks]
