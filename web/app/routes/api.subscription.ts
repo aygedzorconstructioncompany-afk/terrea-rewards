@@ -17,7 +17,25 @@ function getTier(monthsActive: number) {
   return                         { tier: "start",   rate: 0.10, next: "stay",    monthsToNext: 4 - monthsActive };
 }
 
-async function fetchShopProducts(shop: string): Promise<any[]> {
+// Получаем товары через Admin API (если есть токен)
+async function fetchProductsByIds(shop: string, productIds: string[]): Promise<any[]> {
+  if (!productIds.length) return [];
+  try {
+    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+    if (!accessToken || accessToken === 'demo') return [];
+    const ids = productIds.join(',');
+    const resp = await fetch(
+      `https://${shop}/admin/api/2024-01/products.json?ids=${ids}&fields=id,title,images`,
+      { headers: { "X-Shopify-Access-Token": accessToken } }
+    );
+    if (!resp.ok) return [];
+    const data = await resp.json() as any;
+    return data.products || [];
+  } catch { return []; }
+}
+
+// Получаем ВСЕ товары через Admin API
+async function fetchAllProducts(shop: string): Promise<any[]> {
   try {
     const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
     if (!accessToken || accessToken === 'demo') return [];
@@ -46,19 +64,27 @@ export async function loader({ request }: any) {
     const sub = await prisma.subscription.findFirst({
       where: { shop, customerId: String(customerId) }
     });
-    const allProducts = await fetchShopProducts(shop);
+
+    let subscribedProducts: string[] = [];
+    if (sub?.products) {
+      try { subscribedProducts = JSON.parse(sub.products); } catch {}
+    }
+
+    // Загружаем только подписанные товары (быстрее) или все если подписанных нет
+    const allProducts = subscribedProducts.length > 0
+      ? await fetchProductsByIds(shop, subscribedProducts)
+      : await fetchAllProducts(shop);
 
     if (!sub) {
       return Response.json({
         active: false, monthsActive: 0, tier: "start", rate: 10,
         pendingPoints: 0, next: "stay", monthsToNext: 4,
-        subscribedProducts: [], allProducts,
+        subscribedProducts: [],
+        allProducts,
       }, { headers: corsHeaders(request) });
     }
 
     const tierInfo = getTier(sub.monthsActive);
-    let subscribedProducts: string[] = [];
-    try { subscribedProducts = sub.products ? JSON.parse(sub.products) : []; } catch {}
 
     return Response.json({
       active: sub.status === "active",
