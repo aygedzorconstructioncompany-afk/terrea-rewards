@@ -67,3 +67,28 @@ model Setting {
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
 }
+model Subscription {
+  id            String    @id @default(cuid())
+  shop          String
+  customerId    String
+  status        String    @default("active")
+  monthsActive  Int       @default(0)
+  pendingPoints Int       @default(0)
+  products      String?   // JSON массив product_id
+  startedAt     DateTime  @default(now())
+  lastOrderAt   DateTime?
+  @@unique([shop, customerId])
+}
+
+model Referral {
+  id              String    @id @default(cuid())
+  shop            String
+  referrerId      String
+  referredId      String?
+  referralCode    String    @unique
+  status          String    @default("pending")
+  firstOrderBonus Int       @default(0)
+  totalBonus      Int       @default(0)
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+}

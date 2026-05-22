@@ -26,7 +26,7 @@ api_version = "2024-01"
   uri = "https://terrea-rewards-1.onrender.com/webhooks/subscriptions/billing"
 
 [access_scopes]
-scopes = "read_customers,write_customers,write_discounts,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_orders,write_orders,read_own_subscription_contracts,write_own_subscription_contracts"
+scopes = "read_customers,write_customers,write_discounts,write_metaobject_definitions,read_metaobjects,write_metaobjects,read_orders,write_orders,read_subscription_contracts,write_subscription_contracts,read_own_subscription_contracts,write_own_subscription_contracts"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

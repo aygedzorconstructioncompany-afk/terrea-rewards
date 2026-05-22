@@ -7,11 +7,47 @@ export const action = async ({ request }) => {
     const customerId = order.customer?.id?.toString();
     const shop = request.headers.get("x-shopify-shop-domain");
 
-    if (!customerId) {
+    if (!customerId || !shop) {
       return new Response(JSON.stringify({ ok: true }), {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    // ---------------------------
+    // 🔥 1. СОЗДАНИЕ ИЛИ ОБНОВЛЕНИЕ ПОДПИСКИ
+    // ---------------------------
+
+    await prisma.subscription.upsert({
+      where: {
+        shop_customerId: {
+          shop,
+          customerId,
+        },
+      },
+      update: {
+        status: "active",
+        nextChargeDate: new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ),
+        lastOrderAt: new Date(),
+        daysLeft: null,
+      },
+      create: {
+        customerId,
+        shop,
+        status: "active",
+        nextChargeDate: new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000
+        ),
+        lastOrderAt: new Date(),
+      },
+    });
+
+    console.log("✅ Subscription upserted");
+
+    // ---------------------------
+    // 🔥 2. СПИСАНИЕ ПОИНТОВ (как было)
+    // ---------------------------
 
     const note = order.note || "";
     const match = note.match(/USED_POINTS:(\d+)/);

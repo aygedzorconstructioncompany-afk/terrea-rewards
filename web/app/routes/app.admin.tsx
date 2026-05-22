@@ -114,11 +114,13 @@ export default function AdminPage() {
     } catch { showMsg("❌ Error", "error"); }
   };
 
-  const filtered = customers.filter(c =>
-  c.customerId.includes(search) ||
-  (c.tier || "").includes(search.toLowerCase()) ||
-  (c.email || "").toLowerCase().includes(search.toLowerCase())
-);
+  // ✅ ИСПРАВЛЕНО: поиск по email и tier (убран поиск по ID)
+  const filtered = customers.filter(c => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (c.email || "").toLowerCase().includes(q) ||
+           (c.tier || "").toLowerCase().includes(q);
+  });
 
   const totalBalance = customers.reduce((s, c) => s + c.balance, 0);
   const activeSubs = customers.filter(c => c.status === "active").length;
@@ -178,7 +180,7 @@ export default function AdminPage() {
       {editCustomer && (
         <div style={S.editCard}>
           <p style={{ ...S.cardTitle, borderColor: "rgba(215,44,13,0.2)" }}>
-            Adjust balance — <span style={{ fontFamily: "monospace" }}>{editCustomer.customerId}</span>
+            Adjust balance — <span style={{ fontFamily: "monospace" }}>{editCustomer.email || editCustomer.customerId}</span>
           </p>
           <p style={{ fontSize: "13px", color: "#888", marginBottom: "16px" }}>Current balance: <strong>{editCustomer.balance} pts</strong></p>
           <input style={S.input} type="number" placeholder="Amount (e.g. +100 or -50)" value={adjustAmount} onChange={e => setAdjustAmount(e.target.value)} />
@@ -192,14 +194,16 @@ export default function AdminPage() {
 
       <div style={S.card}>
         <p style={S.cardTitle}>Customer balances ({customers.length})</p>
-        <input style={S.searchInput} type="text" placeholder="Search by customer ID or tier..." value={search} onChange={e => setSearch(e.target.value)} />
+        {/* ✅ ИСПРАВЛЕНО: placeholder обновлён */}
+        <input style={S.searchInput} type="text" placeholder="Search by email or tier..." value={search} onChange={e => setSearch(e.target.value)} />
         {loading ? (
           <p style={{ color: "#888", textAlign: "center", padding: "32px" }}>Loading...</p>
         ) : (
           <table style={S.table}>
             <thead>
               <tr>
-                <th style={S.th}>Customer ID</th>
+                {/* ✅ ИСПРАВЛЕНО: заголовок колонки */}
+                <th style={S.th}>Customer</th>
                 <th style={S.th}>Tier</th>
                 <th style={S.th}>Months</th>
                 <th style={S.th}>Status</th>
@@ -212,10 +216,10 @@ export default function AdminPage() {
                 <tr><td colSpan={6} style={{ ...S.td, textAlign: "center", color: "#bbb", padding: "32px" }}>No customers found</td></tr>
               ) : filtered.map(c => (
                 <tr key={c.customerId}>
-                <td style={S.td}>
-  <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#888" }}>{c.customerId}</span>
-  {c.email && <div style={{ fontSize: "13px", color: "#1A1B18", marginTop: "2px" }}>{c.email}</div>}
-</td>
+                  <td style={S.td}>
+                    <span style={{ fontFamily: "monospace", fontSize: "11px", color: "#888" }}>{c.customerId}</span>
+                    {c.email && <div style={{ fontSize: "13px", color: "#1A1B18", marginTop: "2px" }}>{c.email}</div>}
+                  </td>
                   <td style={S.td}><span style={{ ...S.badge, ...(tierColors[c.tier] || tierColors.start) }}>{c.tier || "start"}</span></td>
                   <td style={S.td}>{c.monthsActive} mo</td>
                   <td style={S.td}>
