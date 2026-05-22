@@ -17,38 +17,6 @@ function getTier(monthsActive: number) {
   return                         { tier: "start",   rate: 0.10, next: "stay",    monthsToNext: 4 - monthsActive };
 }
 
-// Получаем товары через Admin API (если есть токен)
-async function fetchProductsByIds(shop: string, productIds: string[]): Promise<any[]> {
-  if (!productIds.length) return [];
-  try {
-    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-    if (!accessToken || accessToken === 'demo') return [];
-    const ids = productIds.join(',');
-    const resp = await fetch(
-      `https://${shop}/admin/api/2024-01/products.json?ids=${ids}&fields=id,title,images`,
-      { headers: { "X-Shopify-Access-Token": accessToken } }
-    );
-    if (!resp.ok) return [];
-    const data = await resp.json() as any;
-    return data.products || [];
-  } catch { return []; }
-}
-
-// Получаем ВСЕ товары через Admin API
-async function fetchAllProducts(shop: string): Promise<any[]> {
-  try {
-    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
-    if (!accessToken || accessToken === 'demo') return [];
-    const resp = await fetch(
-      `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images`,
-      { headers: { "X-Shopify-Access-Token": accessToken } }
-    );
-    if (!resp.ok) return [];
-    const data = await resp.json() as any;
-    return data.products || [];
-  } catch { return []; }
-}
-
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -66,21 +34,22 @@ export async function loader({ request }: any) {
     });
 
     let subscribedProducts: string[] = [];
+    let productDetails: any[] = [];
+
     if (sub?.products) {
       try { subscribedProducts = JSON.parse(sub.products); } catch {}
     }
-
-    // Загружаем только подписанные товары (быстрее) или все если подписанных нет
-    const allProducts = subscribedProducts.length > 0
-      ? await fetchProductsByIds(shop, subscribedProducts)
-      : await fetchAllProducts(shop);
+    if ((sub as any)?.productDetails) {
+      try { productDetails = JSON.parse((sub as any).productDetails); } catch {}
+    }
 
     if (!sub) {
       return Response.json({
         active: false, monthsActive: 0, tier: "start", rate: 10,
         pendingPoints: 0, next: "stay", monthsToNext: 4,
         subscribedProducts: [],
-        allProducts,
+        allProducts: [],
+        productDetails: [],
       }, { headers: corsHeaders(request) });
     }
 
@@ -98,7 +67,8 @@ export async function loader({ request }: any) {
       startedAt: sub.startedAt,
       lastOrderAt: sub.lastOrderAt,
       subscribedProducts,
-      allProducts,
+      allProducts: productDetails,
+      productDetails,
     }, { headers: corsHeaders(request) });
   } catch (e: any) {
     return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
@@ -114,7 +84,7 @@ export async function action({ request }: any) {
 
   try {
     const body = await request.json();
-    const { customer_id, action: act, products } = body;
+    const { customer_id, action: act, products, productDetails } = body;
 
     if (!customer_id) {
       return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
@@ -124,14 +94,20 @@ export async function action({ request }: any) {
       const sub = await prisma.subscription.findFirst({
         where: { shop, customerId: String(customer_id) }
       });
+      const updateData: any = {
+        products: JSON.stringify(products || []),
+      };
+      if (productDetails) {
+        updateData.productDetails = JSON.stringify(productDetails);
+      }
       if (!sub) {
         await prisma.subscription.create({
-          data: { shop, customerId: String(customer_id), status: "active", products: JSON.stringify(products || []) }
+          data: { shop, customerId: String(customer_id), status: "active", ...updateData }
         });
       } else {
         await prisma.subscription.update({
           where: { id: sub.id },
-          data: { products: JSON.stringify(products || []) }
+          data: updateData
         });
       }
       return Response.json({ success: true }, { headers: corsHeaders(request) });
