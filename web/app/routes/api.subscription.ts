@@ -19,11 +19,11 @@ function getTier(monthsActive: number) {
 
 async function fetchShopProducts(shop: string): Promise<any[]> {
   try {
-    const session = await prisma.session.findFirst({ where: { shop } });
-    if (!session?.accessToken) return [];
+    const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+    if (!accessToken || accessToken === 'demo') return [];
     const resp = await fetch(
       `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,images`,
-      { headers: { "X-Shopify-Access-Token": session.accessToken } }
+      { headers: { "X-Shopify-Access-Token": accessToken } }
     );
     if (!resp.ok) return [];
     const data = await resp.json() as any;
