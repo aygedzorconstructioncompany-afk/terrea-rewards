@@ -75,7 +75,6 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!isSubscription) {
       console.log(`[orders/paid] 📦 Regular order ${orderName} — referral bonus only`);
 
-      // Находим wallet для referral bonus
       const wallet = await prisma.wallet.findUnique({
         where: { shop_customer: { shop: MAIN_SHOP, customerId } },
       });
@@ -262,6 +261,10 @@ async function processReferralBonus(shop: string, customerId: string, orderId: s
     const referrerWallet = await prisma.wallet.findFirst({ where: { customerId: referral.referrerId } });
     if (!referrerWallet) { console.log(`[referral] ❌ No wallet for referrer=${referral.referrerId}`); return; }
 
+    // ✅ Получаем email друга для отображения в истории
+    const refereeWallet = await prisma.wallet.findFirst({ where: { customerId: customerId } });
+    const refereeName = refereeWallet?.email || `customer ${customerId}`;
+
     const existingReferral = await prisma.pointsTransaction.findFirst({ where: { orderId, type: "referral_bonus" } });
     if (existingReferral) { console.log(`[referral] ⚠️ Duplicate prevented for ${orderName}`); return; }
 
@@ -283,7 +286,8 @@ async function processReferralBonus(shop: string, customerId: string, orderId: s
         orderId,
         type: "referral_bonus",
         amount: bonus,
-        description: `Referral ${Math.round(bonusRate * 100)}% — friend's order ${orderName}`,
+        // ✅ Добавлено имя друга
+        description: `Referral ${Math.round(bonusRate * 100)}% — ${refereeName} order ${orderName}`,
       },
     });
 
