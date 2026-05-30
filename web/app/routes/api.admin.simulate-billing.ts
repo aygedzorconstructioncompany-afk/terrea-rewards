@@ -1,4 +1,4 @@
-import { json } from "@remix-run/node";
+import { data as json } from "react-router";
 import prisma from "../db.server";
 
 export async function action({ request }: any) {
