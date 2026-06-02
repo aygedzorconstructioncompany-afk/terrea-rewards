@@ -16,9 +16,9 @@ async function updateShopifyContract(shop: string, contractId: string, action: s
   const API_URL = `https://${shop}/admin/api/2024-01/graphql.json`;
 
   const mutations: Record<string, string> = {
-pause:  `mutation { subscriptionContractPause(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
-cancel: `mutation { subscriptionContractCancel(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
-resume: `mutation { subscriptionContractActivate(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
+    pause:  `mutation { subscriptionContractPause(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
+    cancel: `mutation { subscriptionContractCancel(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
+    resume: `mutation { subscriptionContractActivate(subscriptionContractId: "${contractId}") { contract { id status } userErrors { field message } } }`,
   };
 
   const query = mutations[action];
@@ -50,7 +50,7 @@ export async function action({ request }: any) {
   }
 
   try {
-    const { customer_id, shop, action: subAction } = await request.json();
+    const { customer_id, shop, action: subAction, email, tier } = await request.json();
     const shopId = shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id || !subAction) {
@@ -100,6 +100,22 @@ export async function action({ request }: any) {
       await prisma.subscription.update({
         where: { id: sub.id },
         data: { status: "active" }
+      });
+      // Сохраняем email и tier в Wallet
+      await prisma.wallet.upsert({
+        where: { shop_customer: { shop: shopId, customerId: String(customer_id) } },
+        create: {
+          shop: shopId,
+          customerId: String(customer_id),
+          email: email || '',
+          balance: 0,
+          totalSpent: 0,
+          tier: tier || 'start'
+        },
+        update: {
+          ...(email ? { email } : {}),
+          tier: tier || 'start'
+        }
       });
       if (sub.subscriptionContractId) {
         await updateShopifyContract(shopId, sub.subscriptionContractId, "resume");
