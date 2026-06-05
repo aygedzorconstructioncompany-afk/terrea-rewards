@@ -22,7 +22,7 @@ export async function loader({ request }: any) {
 
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
   if (!customerId) {
     return Response.json({ error: "No customerId" }, { status: 400, headers: corsHeaders(request) });
@@ -53,19 +53,34 @@ const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || 
     const referrals = await prisma.referral.findMany({
       where: { referrerId: customerId, shop },
     });
-
     const totalReferrals = referrals.length;
     const completedReferrals = referrals.filter(r => r.status === "completed").length;
     const totalEarned = referrals.reduce((sum, r) => sum + r.totalBonus, 0);
 
+    // Кто пригласил текущего клиента
+    let referredBy = null;
+    const referral = await prisma.referral.findFirst({
+      where: { refereeId: customerId, shop }
+    });
+    if (referral) {
+      const referrerWallet = await prisma.wallet.findFirst({
+        where: { customerId: referral.referrerId }
+      });
+      if (referrerWallet?.email) {
+        referredBy = referrerWallet.email;
+      }
+    }
+
     return Response.json({
       code: wallet.referralCode,
+      referredBy,
       stats: {
         total: totalReferrals,
         completed: completedReferrals,
         earned: totalEarned,
       },
     }, { headers: corsHeaders(request) });
+
   } catch (e: any) {
     console.error(e);
     return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
