@@ -15,6 +15,43 @@ function generateCode(customerId: string): string {
   return "REF-" + customerId.slice(-4) + "-" + random;
 }
 
+// Получить имя клиента из Shopify Admin API
+async function getCustomerName(shop: string, customerId: string): Promise<string | null> {
+  try {
+    // Берём access token из сессии
+    const session = await (prisma as any).session.findFirst({
+      where: { shop },
+      orderBy: { expires: "desc" },
+    });
+
+    if (!session?.accessToken) return null;
+
+    // Числовой ID (убираем GID если есть)
+    const numericId = customerId.replace("gid://shopify/Customer/", "");
+
+    const res = await fetch(
+      `https://${shop}/admin/api/2024-01/customers/${numericId}.json`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": session.accessToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    const c = data.customer;
+    if (!c) return null;
+
+    const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ");
+    return fullName || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -22,10 +59,16 @@ export async function loader({ request }: any) {
 
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+  const shop =
+    url.searchParams.get("shop") ||
+    process.env.SHOPIFY_SHOP_DOMAIN ||
+    "terrea-home-rituals.myshopify.com";
 
   if (!customerId) {
-    return Response.json({ error: "No customerId" }, { status: 400, headers: corsHeaders(request) });
+    return Response.json(
+      { error: "No customerId" },
+      { status: 400, headers: corsHeaders(request) }
+    );
   }
 
   try {
@@ -49,40 +92,58 @@ export async function loader({ request }: any) {
       });
     }
 
-    // Count referrals
+    // Статистика рефералов
     const referrals = await prisma.referral.findMany({
       where: { referrerId: customerId, shop },
     });
     const totalReferrals = referrals.length;
-    const completedReferrals = referrals.filter(r => r.status === "completed").length;
+    const completedReferrals = referrals.filter(
+      (r) => r.status === "completed"
+    ).length;
     const totalEarned = referrals.reduce((sum, r) => sum + r.totalBonus, 0);
 
     // Кто пригласил текущего клиента
     let referredBy = null;
+    let referredByName = null;
+
     const referral = await prisma.referral.findFirst({
-      where: { refereeId: customerId, shop }
+      where: { refereeId: customerId, shop },
     });
+
     if (referral) {
       const referrerWallet = await prisma.wallet.findFirst({
-        where: { customerId: referral.referrerId }
+        where: { customerId: referral.referrerId },
       });
+
       if (referrerWallet?.email) {
         referredBy = referrerWallet.email;
       }
+
+      // Пробуем получить имя из Shopify
+      const name = await getCustomerName(shop, referral.referrerId);
+      if (name) {
+        referredByName = name;
+      }
     }
 
-    return Response.json({
-      code: wallet.referralCode,
-      referredBy,
-      stats: {
-        total: totalReferrals,
-        completed: completedReferrals,
-        earned: totalEarned,
+    return Response.json(
+      {
+        code: wallet.referralCode,
+        referredBy,           // email (запасной вариант)
+        referredByName,       // имя и фамилия (основной)
+        stats: {
+          total: totalReferrals,
+          completed: completedReferrals,
+          earned: totalEarned,
+        },
       },
-    }, { headers: corsHeaders(request) });
-
+      { headers: corsHeaders(request) }
+    );
   } catch (e: any) {
     console.error(e);
-    return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
+    return Response.json(
+      { error: e.message },
+      { status: 500, headers: corsHeaders(request) }
+    );
   }
 }
