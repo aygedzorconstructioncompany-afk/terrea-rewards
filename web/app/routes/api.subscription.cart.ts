@@ -10,20 +10,25 @@ const corsHeaders = (request: any) => {
   };
 };
 
+// Нужен loader для обработки OPTIONS preflight
+export async function loader({ request }: any) {
+  return new Response(null, { status: 204, headers: corsHeaders(request) });
+}
+
 export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
   try {
-    const body       = await request.json();
-    const customer_id   = body.customer_id;
-    const product_id    = body.product_id;
-    const product_title = body.product_title || "Unknown product";
-    const product_image = body.product_image || "";
-    const price         = body.price || 0;
-    const act           = body.action; // "add" | "remove"
-    const shop          = body.shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+    const body        = await request.json();
+    const customer_id    = body.customer_id;
+    const product_id     = body.product_id;
+    const product_title  = body.product_title || "Unknown product";
+    const product_image  = body.product_image || "";
+    const price          = body.price || 0;
+    const act            = body.action;
+    const shop           = body.shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id || !product_id) {
       return Response.json(
@@ -32,7 +37,6 @@ export async function action({ request }: any) {
       );
     }
 
-    // Текущая подписка
     const sub = await prisma.subscription.findFirst({
       where: { shop, customerId: String(customer_id) }
     });
