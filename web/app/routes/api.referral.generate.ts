@@ -21,9 +21,9 @@ export async function loader({ request }: any) {
   }
 
   const url = new URL(request.url);
-  const customerId  = url.searchParams.get("customer_id");
-  const firstName   = url.searchParams.get("first_name") || null;
-  const lastName    = url.searchParams.get("last_name")  || null;
+  const customerId = url.searchParams.get("customer_id");
+  const firstName  = url.searchParams.get("first_name") || null;
+  const lastName   = url.searchParams.get("last_name")  || null;
   const shop =
     url.searchParams.get("shop") ||
     process.env.SHOPIFY_SHOP_DOMAIN ||
@@ -43,32 +43,26 @@ export async function loader({ request }: any) {
     });
 
     if (!wallet) {
-      wallet = await prisma.wallet.create({
-        data: {
-          shop,
-          customerId,
-          balance: 0,
-          referralCode: generateCode(customerId),
-          firstName,
-          lastName,
-        },
-      });
+      // Создаём через raw SQL чтобы включить firstName/lastName
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "Wallet" (id, shop, "customerId", balance, "totalSpent", tier, "referralCode", "firstName", "lastName")
+         VALUES (gen_random_uuid(), $1, $2, 0, 0, 'Basic', $3, $4, $5)
+         ON CONFLICT (shop, "customerId") DO NOTHING`,
+        shop, customerId, generateCode(customerId), firstName, lastName
+      );
+      wallet = await prisma.wallet.findFirst({ where: { shop, customerId } });
     } else {
-      // Обновить имя если передано
-      const needsUpdate =
-        !wallet.referralCode ||
-        (firstName && wallet.firstName !== firstName) ||
-        (lastName  && wallet.lastName  !== lastName);
-
-      if (needsUpdate) {
-        wallet = await prisma.wallet.update({
-          where: { id: wallet.id },
-          data: {
-            ...(wallet.referralCode ? {} : { referralCode: generateCode(customerId) }),
-            ...(firstName ? { firstName } : {}),
-            ...(lastName  ? { lastName  } : {}),
-          },
-        });
+      // Обновить имя через raw SQL
+      if (firstName || lastName) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE "Wallet" SET
+            "firstName" = COALESCE($1, "firstName"),
+            "lastName"  = COALESCE($2, "lastName"),
+            "referralCode" = COALESCE("referralCode", $3)
+           WHERE shop = $4 AND "customerId" = $5`,
+          firstName, lastName, generateCode(customerId), shop, customerId
+        );
+        wallet = await prisma.wallet.findFirst({ where: { shop, customerId } });
       }
     }
 
@@ -76,11 +70,11 @@ export async function loader({ request }: any) {
     const referrals = await prisma.referral.findMany({
       where: { referrerId: customerId, shop },
     });
-    const totalReferrals    = referrals.length;
+    const totalReferrals     = referrals.length;
     const completedReferrals = referrals.filter((r) => r.status === "completed").length;
     const totalEarned        = referrals.reduce((sum, r) => sum + r.totalBonus, 0);
 
-    // Кто пригласил текущего клиента
+    // Кто пригласил текущего клиента — через raw SQL
     let referredBy     = null;
     let referredByName = null;
 
@@ -89,26 +83,21 @@ export async function loader({ request }: any) {
     });
 
     if (referral) {
-      const referrerWallet = await prisma.wallet.findFirst({
-        where: { customerId: referral.referrerId },
-      });
+      const rows: any[] = await prisma.$queryRawUnsafe(
+        `SELECT email, "firstName", "lastName" FROM "Wallet" WHERE "customerId" = $1 LIMIT 1`,
+        referral.referrerId
+      );
 
-      if (referrerWallet) {
-        // Email как запасной вариант
-        if (referrerWallet.email) {
-          referredBy = referrerWallet.email;
-        }
-        // Имя + фамилия (основной вариант)
-        const parts = [referrerWallet.firstName, referrerWallet.lastName].filter(Boolean);
-        if (parts.length > 0) {
-          referredByName = parts.join(" ");
-        }
+      if (rows && rows[0]) {
+        if (rows[0].email) referredBy = rows[0].email;
+        const parts = [rows[0].firstName, rows[0].lastName].filter(Boolean);
+        if (parts.length > 0) referredByName = parts.join(" ");
       }
     }
 
     return Response.json(
       {
-        code: wallet.referralCode,
+        code: wallet?.referralCode,
         referredBy,
         referredByName,
         stats: {
