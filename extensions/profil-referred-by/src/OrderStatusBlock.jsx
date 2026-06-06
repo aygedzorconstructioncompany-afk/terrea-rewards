@@ -15,14 +15,13 @@ function Extension() {
         const payload = JSON.parse(atob(token.split('.')[1]));
         const cid     = (payload.sub || '').replace('gid://shopify/Customer/', '');
 
-        setDebug('cid:' + cid);
-
         const res = await fetch(
           API + '/api/referral/generate?customer_id=' + cid + '&shop=' + SHOP
         );
         const d = await res.json();
 
-        setDebug('rb=' + d.referredBy + ' | rbn=' + d.referredByName);
+        // Показываем весь ответ
+        setDebug(JSON.stringify(d).slice(0, 200));
       } catch (e) {
         setDebug('ERR: ' + e.message);
       }
