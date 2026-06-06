@@ -25,10 +25,11 @@ function Extension() {
   }, []);
   if (!ready) return null;
   var name = referredByName || referredBy;
-  var line = name ? ('Referred by: ' + name + (referredByName && referredBy ? ' ('+referredBy+')' : '')) : null;
-  if (line) {
-    return (<s-banner><s-text>{line}</s-text><s-text><s-link href="https://terrea.co.uk/pages/profile" target="_top">Edit email &amp; profile</s-link></s-text></s-banner>);
+  var refLine = name ? ('Referred by: ' + name + (referredByName && referredBy ? ' ('+referredBy+')' : '')) : null;
+  var editLink = 'https://terrea.co.uk/pages/profile';
+  if (refLine) {
+    return (<s-banner><s-text><s-link href={editLink} target="_top">Edit email</s-link>{'  ·  ' + refLine}</s-text></s-banner>);
   }
-  return (<s-banner><s-text><s-link href="https://terrea.co.uk/pages/profile" target="_top">Edit email &amp; profile</s-link></s-text></s-banner>);
+  return (<s-banner><s-text><s-link href={editLink} target="_top">Edit email</s-link></s-text></s-banner>);
 }
 export default async () => { render(<Extension />, document.body); };
