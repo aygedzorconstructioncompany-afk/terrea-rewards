@@ -1,0 +1,15 @@
+api_version = "2026-04"
+
+[[extensions]]
+name = "profil-referred-by"
+handle = "profil-referred-by"
+type = "ui_extension"
+uid = "057d1f2e-3ac0-07c6-7113-4a17a46f1af3dd17f78a"
+
+[[extensions.targeting]]
+module = "./src/OrderStatusBlock.jsx"
+target = "customer-account.profile.block.render"
+
+[extensions.capabilities]
+api_access = true
+network_access = true
