@@ -10,6 +10,10 @@ uid = "057d1f2e-3ac0-07c6-7113-4a17a46f1af3dd17f78a"
 module = "./src/OrderStatusBlock.jsx"
 target = "customer-account.profile.block.render"
 
+[[extensions.targeting]]
+module = "./src/ReferredBy.jsx"
+target = "customer-account.profile.block.render"
+
 [extensions.capabilities]
 api_access = true
 network_access = true
