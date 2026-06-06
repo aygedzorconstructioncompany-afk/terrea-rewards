@@ -16,6 +16,7 @@ export default [
   route("/api/subscription/date", "./routes/api.subscription.date.ts"),
   route("/api/subscription/contracts", "./routes/api.subscription.contracts.ts"),
   route("/api/subscription/product", "./routes/api.subscription-product.ts"),
+  route("/api/subscription/cart", "./routes/api.subscription.cart.ts"),
   route("/api/points/expire", "./routes/api.points.expire.ts"),
   route("/api/points/transfer", "./routes/api.points.transfer.ts"),
   route("/api/points/checkout", "./routes/api.points.checkout.ts"),
@@ -31,7 +32,8 @@ export default [
   route("/api/admin/balance", "./routes/api.admin.balance.ts"),
   route("/api/admin/rates", "./routes/api.admin.rates.ts"),
   route("/api/admin/cache-emails", "./routes/api.admin.cache-emails.ts"),
-route("/api/admin/reset", "./routes/api.admin.reset.ts"),
-route("/api/admin/simulate-billing", "./routes/api.admin.simulate-billing.ts"),
+  route("/api/admin/reset", "./routes/api.admin.reset.ts"),
+  route("/api/admin/simulate-billing", "./routes/api.admin.simulate-billing.ts"),
+  route("/api/customer/update", "./routes/api.customer.update.ts"),
   route("/account/subscriptions", "./routes/account.subscriptions.tsx"),
 ] satisfies RouteConfig;
