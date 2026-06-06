@@ -3,8 +3,8 @@ import { render } from 'preact';
 import { useState, useEffect } from 'preact/hooks';
 const API='https://terrea-rewards-1.onrender.com';
 const SHOP='terrea-home-rituals.myshopify.com';
-function ReferredBy(){
-  const [refLine,setRefLine]=useState(null);
+function Extension(){
+  const [line,setLine]=useState(null);
   const [ready,setReady]=useState(false);
   useEffect(()=>{
     async function load(){
@@ -17,14 +17,14 @@ function ReferredBy(){
         const d=await res.json();
         if(d.referredByName||d.referredBy){
           var n=d.referredByName||d.referredBy;
-          setRefLine('Referred by: '+n+(d.referredByName&&d.referredBy?' ('+d.referredBy+')':''));
+          setLine('Referred by: '+n+(d.referredByName&&d.referredBy?' ('+d.referredBy+')':''));
         }
-      }catch(e){console.error('[ref]',e.message);}
+      }catch(e){}
       finally{setReady(true);}
     }
     load();
   },[]);
-  if(!ready||!refLine)return null;
-  return(<s-banner><s-text>{refLine}</s-text></s-banner>);
+  if(!ready||!line)return null;
+  return(<s-banner><s-text>{line}</s-text></s-banner>);
 }
-export default async()=>{render(<ReferredBy/>,document.body);};
+export default async()=>{render(<Extension/>,document.body);};
