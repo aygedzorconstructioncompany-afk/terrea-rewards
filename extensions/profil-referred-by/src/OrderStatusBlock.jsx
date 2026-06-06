@@ -19,11 +19,11 @@ function Extension() {
         if (!cid) { setReady(true); return; }
 
         const res = await fetch(
-          `${API}/api/referral/generate?customer_id=${cid}&shop=${SHOP}`
+          API + '/api/referral/generate?customer_id=' + cid + '&shop=' + SHOP
         );
         const d = await res.json();
-        if (d.referredByName) setReferredByName(d.referredByName);
-        if (d.referredBy)     setReferredBy(d.referredBy);
+        if (d && d.referredByName) setReferredByName(d.referredByName);
+        if (d && d.referredBy)     setReferredBy(d.referredBy);
       } catch (e) {
         console.error('[profil-referred-by]', e.message);
       } finally {
@@ -35,16 +35,21 @@ function Extension() {
 
   if (!ready) return null;
 
-  const hasReferral = referredByName || referredBy;
+  // Формируем текст Referred by
+  var refText = null;
+  if (referredByName && referredBy) {
+    refText = 'Referred by: ' + referredByName + ' (' + referredBy + ')';
+  } else if (referredByName) {
+    refText = 'Referred by: ' + referredByName;
+  } else if (referredBy) {
+    refText = 'Referred by: ' + referredBy;
+  }
 
   return (
     <s-banner>
-      {hasReferral && (
-        <s-text>
-          Referred by: {referredByName || referredBy}
-          {referredByName && referredBy ? ` (${referredBy})` : ''}
-        </s-text>
-      )}
+      {refText ? (
+        <s-text>{refText}</s-text>
+      ) : null}
       <s-text>
         <s-link href="https://terrea.co.uk/pages/profile" target="_top">
           Edit email & profile →
