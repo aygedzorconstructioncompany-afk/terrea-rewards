@@ -25,18 +25,14 @@ function Extension(){
   },[]);
   if(!ready)return null;
   var name=refName||referredBy;
-  var refLine=name?('Referred by: '+name+(refName&&referredBy?' ('+referredBy+')':'')):null;
+  var refLine=name?('  ·  Referred by: '+name+(refName&&referredBy?' ('+referredBy+')':'')):''
   return(
-    <div>
-      <s-banner>
-        <s-text><s-link href="https://terrea.co.uk/pages/profile#edit-email" target="_top">Edit email</s-link></s-text>
-      </s-banner>
-      {refLine&&(
-        <s-banner>
-          <s-text>{refLine}</s-text>
-        </s-banner>
-      )}
-    </div>
+    <s-banner>
+      <s-text>
+        <s-link href="https://terrea.co.uk/pages/profile#edit-email" target="_top">Edit email</s-link>
+        {refLine}
+      </s-text>
+    </s-banner>
   );
 }
 export default async()=>{render(<Extension/>,document.body);};
