@@ -26,7 +26,7 @@ function Extension() {
   if (!ready) return null;
   var name = referredByName || referredBy;
   var refLine = name ? ('Referred by: ' + name + (referredByName && referredBy ? ' ('+referredBy+')' : '')) : null;
-  var editLink = 'https://terrea.co.uk/pages/profile';
+  var editLink = 'https://terrea.co.uk/pages/profile#edit-email';
   if (refLine) {
     return (<s-banner><s-text><s-link href={editLink} target="_top">Edit email</s-link>{'  ·  ' + refLine}</s-text></s-banner>);
   }
