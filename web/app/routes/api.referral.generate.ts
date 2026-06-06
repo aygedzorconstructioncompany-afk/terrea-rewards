@@ -15,50 +15,15 @@ function generateCode(customerId: string): string {
   return "REF-" + customerId.slice(-4) + "-" + random;
 }
 
-// Получить имя клиента из Shopify Admin API
-async function getCustomerName(shop: string, customerId: string): Promise<string | null> {
-  try {
-    // Берём access token из сессии
-    const session = await (prisma as any).session.findFirst({
-      where: { shop },
-      orderBy: { expires: "desc" },
-    });
-
-    if (!session?.accessToken) return null;
-
-    // Числовой ID (убираем GID если есть)
-    const numericId = customerId.replace("gid://shopify/Customer/", "");
-
-    const res = await fetch(
-      `https://${shop}/admin/api/2024-01/customers/${numericId}.json`,
-      {
-        headers: {
-          "X-Shopify-Access-Token": session.accessToken,
-          "Content-Type": "application/json",
-        },
-      }
-    );
-
-    if (!res.ok) return null;
-
-    const data = await res.json();
-    const c = data.customer;
-    if (!c) return null;
-
-    const fullName = [c.first_name, c.last_name].filter(Boolean).join(" ");
-    return fullName || null;
-  } catch {
-    return null;
-  }
-}
-
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
   const url = new URL(request.url);
-  const customerId = url.searchParams.get("customer_id");
+  const customerId  = url.searchParams.get("customer_id");
+  const firstName   = url.searchParams.get("first_name") || null;
+  const lastName    = url.searchParams.get("last_name")  || null;
   const shop =
     url.searchParams.get("shop") ||
     process.env.SHOPIFY_SHOP_DOMAIN ||
@@ -72,6 +37,7 @@ export async function loader({ request }: any) {
   }
 
   try {
+    // Найти или создать кошелёк
     let wallet = await prisma.wallet.findFirst({
       where: { shop, customerId },
     });
@@ -83,27 +49,39 @@ export async function loader({ request }: any) {
           customerId,
           balance: 0,
           referralCode: generateCode(customerId),
+          firstName,
+          lastName,
         },
       });
-    } else if (!wallet.referralCode) {
-      wallet = await prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { referralCode: generateCode(customerId) },
-      });
+    } else {
+      // Обновить имя если передано
+      const needsUpdate =
+        !wallet.referralCode ||
+        (firstName && wallet.firstName !== firstName) ||
+        (lastName  && wallet.lastName  !== lastName);
+
+      if (needsUpdate) {
+        wallet = await prisma.wallet.update({
+          where: { id: wallet.id },
+          data: {
+            ...(wallet.referralCode ? {} : { referralCode: generateCode(customerId) }),
+            ...(firstName ? { firstName } : {}),
+            ...(lastName  ? { lastName  } : {}),
+          },
+        });
+      }
     }
 
     // Статистика рефералов
     const referrals = await prisma.referral.findMany({
       where: { referrerId: customerId, shop },
     });
-    const totalReferrals = referrals.length;
-    const completedReferrals = referrals.filter(
-      (r) => r.status === "completed"
-    ).length;
-    const totalEarned = referrals.reduce((sum, r) => sum + r.totalBonus, 0);
+    const totalReferrals    = referrals.length;
+    const completedReferrals = referrals.filter((r) => r.status === "completed").length;
+    const totalEarned        = referrals.reduce((sum, r) => sum + r.totalBonus, 0);
 
     // Кто пригласил текущего клиента
-    let referredBy = null;
+    let referredBy     = null;
     let referredByName = null;
 
     const referral = await prisma.referral.findFirst({
@@ -115,26 +93,28 @@ export async function loader({ request }: any) {
         where: { customerId: referral.referrerId },
       });
 
-      if (referrerWallet?.email) {
-        referredBy = referrerWallet.email;
-      }
-
-      // Пробуем получить имя из Shopify
-      const name = await getCustomerName(shop, referral.referrerId);
-      if (name) {
-        referredByName = name;
+      if (referrerWallet) {
+        // Email как запасной вариант
+        if (referrerWallet.email) {
+          referredBy = referrerWallet.email;
+        }
+        // Имя + фамилия (основной вариант)
+        const parts = [referrerWallet.firstName, referrerWallet.lastName].filter(Boolean);
+        if (parts.length > 0) {
+          referredByName = parts.join(" ");
+        }
       }
     }
 
     return Response.json(
       {
         code: wallet.referralCode,
-        referredBy,           // email (запасной вариант)
-        referredByName,       // имя и фамилия (основной)
+        referredBy,
+        referredByName,
         stats: {
-          total: totalReferrals,
+          total:     totalReferrals,
           completed: completedReferrals,
-          earned: totalEarned,
+          earned:    totalEarned,
         },
       },
       { headers: corsHeaders(request) }
