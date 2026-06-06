@@ -22,8 +22,8 @@ function Extension() {
           API + '/api/referral/generate?customer_id=' + cid + '&shop=' + SHOP
         );
         const d = await res.json();
-        if (d && d.referredByName) setReferredByName(d.referredByName);
-        if (d && d.referredBy)     setReferredBy(d.referredBy);
+        if (d.referredByName) setReferredByName(d.referredByName);
+        if (d.referredBy)     setReferredBy(d.referredBy);
       } catch (e) {
         console.error('[profil-referred-by]', e.message);
       } finally {
@@ -33,27 +33,31 @@ function Extension() {
     load();
   }, []);
 
+  // Ждём загрузки данных
   if (!ready) return null;
 
-  // Формируем текст Referred by
-  var refText = null;
-  if (referredByName && referredBy) {
-    refText = 'Referred by: ' + referredByName + ' (' + referredBy + ')';
-  } else if (referredByName) {
-    refText = 'Referred by: ' + referredByName;
-  } else if (referredBy) {
-    refText = 'Referred by: ' + referredBy;
+  var name = referredByName || referredBy;
+  var refLine = name
+    ? ('Referred by: ' + name + (referredByName && referredBy ? ' (' + referredBy + ')' : ''))
+    : null;
+
+  // Если есть referral — рендерим s-banner с обоими текстами
+  if (refLine) {
+    return (
+      <s-banner>
+        <s-text>{refLine}</s-text>
+        <s-text>
+          <s-link href="https://terrea.co.uk/pages/profile" target="_top">Edit email &amp; profile →</s-link>
+        </s-text>
+      </s-banner>
+    );
   }
 
+  // Если нет referral — только ссылка
   return (
     <s-banner>
-      {refText ? (
-        <s-text>{refText}</s-text>
-      ) : null}
       <s-text>
-        <s-link href="https://terrea.co.uk/pages/profile" target="_top">
-          Edit email & profile →
-        </s-link>
+        <s-link href="https://terrea.co.uk/pages/profile" target="_top">Edit email &amp; profile →</s-link>
       </s-text>
     </s-banner>
   );
