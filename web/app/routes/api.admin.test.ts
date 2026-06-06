@@ -1,99 +1,151 @@
-import type { LoaderFunctionArgs } from "react-router";
 import prisma from "../db.server";
 
-export async function loader({ request }: LoaderFunctionArgs) {
+const corsHeaders = (request: any) => {
+  const origin = request.headers.get("Origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Credentials": "true",
+  };
+};
+
+function generateCode(customerId: string): string {
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return "REF-" + customerId.slice(-4) + "-" + random;
+}
+
+async function getCustomerName(shop: string, customerId: string): Promise<string | null> {
+  try {
+    const session = await (prisma as any).session.findFirst({
+      where: { shop },
+    });
+
+    console.log('[getCustomerName] session:', session
+      ? `found, token: ${session.accessToken ? 'YES' : 'NO TOKEN'}`
+      : 'NOT FOUND');
+
+    if (!session?.accessToken) return null;
+
+    const numericId = customerId.replace("gid://shopify/Customer/", "");
+    console.log('[getCustomerName] fetching customer id:', numericId);
+
+    const res = await fetch(
+      `https://${shop}/admin/api/2024-01/customers/${numericId}.json`,
+      {
+        headers: {
+          "X-Shopify-Access-Token": session.accessToken,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    console.log('[getCustomerName] Shopify API status:', res.status);
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.log('[getCustomerName] Shopify API error body:', text);
+      return null;
+    }
+
+    const data = await res.json();
+    const c = data.customer;
+    const fullName = [c?.first_name, c?.last_name].filter(Boolean).join(" ");
+    console.log('[getCustomerName] fullName:', fullName);
+    return fullName || null;
+  } catch (e: any) {
+    console.log('[getCustomerName] exception:', e.message);
+    return null;
+  }
+}
+
+export async function loader({ request }: any) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(request) });
+  }
+
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-  const months = parseInt(url.searchParams.get("months") || "0");
-  const secret = url.searchParams.get("secret");
+  const shop =
+    url.searchParams.get("shop") ||
+    process.env.SHOPIFY_SHOP_DOMAIN ||
+    "terrea-home-rituals.myshopify.com";
 
-  if (secret !== "terrea-admin-2024") {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
+  if (!customerId) {
+    return Response.json(
+      { error: "No customerId" },
+      { status: 400, headers: corsHeaders(request) }
+    );
   }
-
-  if (!customerId || !months) {
-    return new Response(JSON.stringify({ error: "customer_id and months required" }), { status: 400 });
-  }
-
-  const date = new Date();
-  date.setMonth(date.getMonth() - months);
-
-  const currentTier = months >= 10 ? "belong+" : months >= 7 ? "belong" : months >= 4 ? "stay" : "start";
-  const shop = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
   try {
-    // Найти существующую подписку
-    const existing = await prisma.subscription.findFirst({
+    let wallet = await prisma.wallet.findFirst({
       where: { shop, customerId },
     });
 
-    const pendingToTransfer = (months >= 4 && existing?.pendingPoints) ? existing.pendingPoints : 0;
+    if (!wallet) {
+      wallet = await prisma.wallet.create({
+        data: {
+          shop,
+          customerId,
+          balance: 0,
+          referralCode: generateCode(customerId),
+        },
+      });
+    } else if (!wallet.referralCode) {
+      wallet = await prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { referralCode: generateCode(customerId) },
+      });
+    }
 
-    // Обновить подписку
-    const sub = await prisma.subscription.upsert({
-      where: { shop_customerId: { customerId, shop } },
-      create: {
-        customerId,
-        shop,
-        startedAt: date,
-        monthsActive: months,
-        status: "active",
-        currentTier,
-        pendingPoints: 0,
+    const referrals = await prisma.referral.findMany({
+      where: { referrerId: customerId, shop },
+    });
+    const totalReferrals = referrals.length;
+    const completedReferrals = referrals.filter((r) => r.status === "completed").length;
+    const totalEarned = referrals.reduce((sum, r) => sum + r.totalBonus, 0);
+
+    let referredBy = null;
+    let referredByName = null;
+
+    const referral = await prisma.referral.findFirst({
+      where: { refereeId: customerId, shop },
+    });
+
+    if (referral) {
+      const referrerWallet = await prisma.wallet.findFirst({
+        where: { customerId: referral.referrerId },
+      });
+
+      if (referrerWallet?.email) {
+        referredBy = referrerWallet.email;
+      }
+
+      const name = await getCustomerName(shop, referral.referrerId);
+      if (name) {
+        referredByName = name;
+      }
+    }
+
+    return Response.json(
+      {
+        code: wallet.referralCode,
+        referredBy,
+        referredByName,
+        stats: {
+          total: totalReferrals,
+          completed: completedReferrals,
+          earned: totalEarned,
+        },
       },
-      update: {
-        startedAt: date,
-        monthsActive: months,
-        status: "active",
-        currentTier,
-        // Сбрасываем pending если переходим на 4+ мес
-       pendingPoints: 0,
-      }
-    });
-
-    // Перенести pendingPoints на баланс при переходе на 4+ мес
-    if (pendingToTransfer > 0) {
-      await prisma.wallet.upsert({
-        where: { shop_customer: { shop, customerId } },
-        create: { shop, customerId, balance: pendingToTransfer, totalSpent: 0, tier: currentTier },
-        update: { balance: { increment: pendingToTransfer }, tier: currentTier },
-      });
-
-      // Получить кошелёк для транзакции
-      const wallet = await prisma.wallet.findUnique({
-        where: { shop_customer: { shop, customerId } },
-      });
-
-      if (wallet) {
-        await prisma.pointsTransaction.create({
-          data: {
-            walletId:    wallet.id,
-            shop,
-            customerId,
-            type:        "cashback",
-            amount:      pendingToTransfer,
-            description: `Pending баллы зачислены при достижении ${currentTier} тира`,
-          },
-        });
-      }
-
-   } else {
-  // При сбросе на Start тир (1-3 мес) — обнуляем баланс
-  await prisma.wallet.upsert({
-    where: { shop_customer: { shop, customerId } },
-    create: { shop, customerId, balance: 0, totalSpent: 0, tier: currentTier },
-    update: { tier: currentTier, balance: months <= 3 ? 0 : undefined },
-  });
-}
-
-    return new Response(JSON.stringify({ success: true, customerId, months, sub, transferred: pendingToTransfer }), {
-      headers: { "Content-Type": "application/json" }
-    });
-
+      { headers: corsHeaders(request) }
+    );
   } catch (e: any) {
-    return new Response(JSON.stringify({ error: e.message }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" }
-    });
+    console.error(e);
+    return Response.json(
+      { error: e.message },
+      { status: 500, headers: corsHeaders(request) }
+    );
   }
 }
