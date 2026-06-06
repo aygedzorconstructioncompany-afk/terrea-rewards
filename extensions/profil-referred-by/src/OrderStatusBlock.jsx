@@ -4,7 +4,7 @@ import { useState, useEffect } from 'preact/hooks';
 const API='https://terrea-rewards-1.onrender.com';
 const SHOP='terrea-home-rituals.myshopify.com';
 function Extension(){
-  const [line,setLine]=useState('');
+  const [line,setLine]=useState(null);
   const [ready,setReady]=useState(false);
   useEffect(()=>{
     async function load(){
@@ -17,14 +17,14 @@ function Extension(){
         const d=await res.json();
         if(d.referredByName||d.referredBy){
           var n=d.referredByName||d.referredBy;
-          setLine('  ·  Referred by: '+n+(d.referredByName&&d.referredBy?' ('+d.referredBy+')':''));
+          setLine('Referred by: '+n+(d.referredByName&&d.referredBy?' ('+d.referredBy+')':''));
         }
       }catch(e){}
       finally{setReady(true);}
     }
     load();
   },[]);
-  if(!ready)return null;
-  return(<s-banner><s-text><s-link href="https://terrea.co.uk/pages/profile#edit-email" target="_top">Edit email</s-link>{line}</s-text></s-banner>);
+  if(!ready||!line)return null;
+  return(<s-banner><s-text>{line}</s-text></s-banner>);
 }
 export default async()=>{render(<Extension/>,document.body);};
