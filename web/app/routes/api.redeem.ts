@@ -56,31 +56,44 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
     },
   };
 
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token,
-    },
-    body: JSON.stringify({ query: mutation, variables }),
-  });
+  // app automation tokens (atkn_) используют Bearer auth,
+  // классические Admin API токены (shpat_) используют X-Shopify-Access-Token.
+  // Пробуем оба варианта.
+  var headerVariants = [
+    { "X-Shopify-Access-Token": token },
+    { "Authorization": "Bearer " + token },
+  ];
 
-  const data = await res.json();
+  var lastError = "";
+  for (var i = 0; i < headerVariants.length; i++) {
+    var res = await fetch(endpoint, {
+      method: "POST",
+      headers: Object.assign(
+        { "Content-Type": "application/json" },
+        headerVariants[i]
+      ),
+      body: JSON.stringify({ query: mutation, variables }),
+    });
 
-  if (data.errors) {
-    throw new Error("GraphQL error: " + JSON.stringify(data.errors));
+    var data: any = await res.json();
+
+    // Если токен не принят — пробуем следующий вариант заголовка
+    if (data.errors) {
+      lastError = "GraphQL error: " + JSON.stringify(data.errors);
+      continue;
+    }
+
+    var result = data.data && data.data.discountCodeBasicCreate;
+    if (result && result.userErrors && result.userErrors.length > 0) {
+      throw new Error("Discount error: " + JSON.stringify(result.userErrors));
+    }
+    if (result && result.codeDiscountNode && result.codeDiscountNode.id) {
+      return code;  // успех
+    }
+    lastError = "Discount not created: " + JSON.stringify(data);
   }
 
-  const result = data.data?.discountCodeBasicCreate;
-  if (result?.userErrors && result.userErrors.length > 0) {
-    throw new Error("Discount error: " + JSON.stringify(result.userErrors));
-  }
-
-  if (!result?.codeDiscountNode?.id) {
-    throw new Error("Discount not created: " + JSON.stringify(data));
-  }
-
-  return code;
+  throw new Error(lastError || "All auth methods failed");
 }
 
 // GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
