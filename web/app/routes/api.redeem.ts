@@ -19,6 +19,67 @@ const json = (data: any, status = 200, request?: any) =>
     },
   });
 
+// Создаёт одноразовый Shopify discount code на сумму amount (в фунтах)
+async function createShopifyDiscount(shop: string, amount: number, code: string) {
+  const token = process.env.SHOPIFY_ACCESS_TOKEN;
+  if (!token) throw new Error("No SHOPIFY_ACCESS_TOKEN");
+
+  const apiVersion = "2024-10";
+
+  // 1. Создаём price rule (правило скидки)
+  const priceRuleRes = await fetch(
+    `https://${shop}/admin/api/${apiVersion}/price_rules.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token,
+      },
+      body: JSON.stringify({
+        price_rule: {
+          title: code,
+          target_type: "line_item",
+          target_selection: "all",
+          allocation_method: "across",
+          value_type: "fixed_amount",
+          value: `-${amount.toFixed(2)}`,
+          customer_selection: "all",
+          once_per_customer: true,
+          usage_limit: 1,
+          starts_at: new Date().toISOString(),
+        },
+      }),
+    }
+  );
+
+  if (!priceRuleRes.ok) {
+    const txt = await priceRuleRes.text();
+    throw new Error("Price rule failed: " + txt);
+  }
+  const priceRuleData = await priceRuleRes.json();
+  const priceRuleId = priceRuleData.price_rule.id;
+
+  // 2. Создаём discount code на основе price rule
+  const discountRes = await fetch(
+    `https://${shop}/admin/api/${apiVersion}/price_rules/${priceRuleId}/discount_codes.json`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Shopify-Access-Token": token,
+      },
+      body: JSON.stringify({ discount_code: { code } }),
+    }
+  );
+
+  if (!discountRes.ok) {
+    const txt = await discountRes.text();
+    throw new Error("Discount code failed: " + txt);
+  }
+
+  return code;
+}
+
 // GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
@@ -27,7 +88,7 @@ export async function loader({ request }: any) {
 
   const url        = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
- const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
   const orderTotal = parseFloat(url.searchParams.get("order_total") || "0");
 
   if (!customerId) {
@@ -114,7 +175,18 @@ export async function action({ request }: any) {
       return json({ error: "Redeem amount exceeds limit (max 50% of order total)" }, 400, request);
     }
 
-    // Списать с баланса
+    // Генерируем уникальный код
+    const code = "WALLET-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+
+    // Создаём настоящую скидку в Shopify
+    try {
+      await createShopifyDiscount(shop, toRedeem, code);
+    } catch (discountErr: any) {
+      console.error("[redeem] discount creation failed:", discountErr.message);
+      return json({ error: "Could not create discount: " + discountErr.message }, 500, request);
+    }
+
+    // Списать с баланса ТОЛЬКО после успешного создания скидки
     await prisma.wallet.update({
       where: { shop_customer: { shop, customerId } },
       data:  { balance: { decrement: toRedeem } },
@@ -129,17 +201,18 @@ export async function action({ request }: any) {
         orderId:     orderId || ("manual-" + Date.now()),
         type:        "redeemed",
         amount:      -toRedeem,
-        description: `Списание ${toRedeem} pts (выбрано покупателем)`,
+        description: `Redeemed ${toRedeem} pts → code ${code}`,
       },
     });
 
-    console.log(`[redeem] ✅ ${toRedeem} pts redeemed for ${customerId}`);
+    console.log(`[redeem] ✅ ${toRedeem} pts redeemed for ${customerId}, code ${code}`);
 
     return json({
       success:    true,
+      code,
       redeemed:   toRedeem,
       newBalance: wallet.balance - toRedeem,
-      message:    `Списано ${toRedeem} pts`,
+      message:    `${toRedeem} pts applied`,
     }, 200, request);
 
   } catch (e: any) {
