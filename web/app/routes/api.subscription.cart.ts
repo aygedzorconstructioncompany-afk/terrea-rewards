@@ -19,14 +19,14 @@ export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
-
   try {
-    const body        = await request.json();
+    const body           = await request.json();
     const customer_id    = body.customer_id;
     const product_id     = body.product_id;
     const product_title  = body.product_title || "Unknown product";
     const product_image  = body.product_image || "";
     const price          = body.price || 0;
+    const quantity       = parseInt(body.quantity) || 1;   // ← читаем количество
     const act            = body.action;
     const shop           = body.shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
@@ -43,7 +43,6 @@ export async function action({ request }: any) {
 
     let products: string[] = [];
     let productDetails: any[] = [];
-
     if (sub?.products) {
       try { products = JSON.parse(sub.products); } catch {}
     }
@@ -55,11 +54,18 @@ export async function action({ request }: any) {
       if (!products.includes(String(product_id))) {
         products.push(String(product_id));
         productDetails.push({
-          id:     String(product_id),
-          title:  product_title,
-          images: product_image ? [{ src: product_image }] : [],
+          id:       String(product_id),
+          title:    product_title,
+          images:   product_image ? [{ src: product_image }] : [],
           price,
+          quantity,          // ← сохраняем количество
         });
+      } else {
+        // Товар уже есть — обновляем его количество
+        const existing = productDetails.find((p: any) => p.id === String(product_id));
+        if (existing) {
+          existing.quantity = quantity;
+        }
       }
     } else if (act === "remove") {
       products       = products.filter((id) => id !== String(product_id));
