@@ -19,62 +19,65 @@ const json = (data: any, status = 200, request?: any) =>
     },
   });
 
-// Создаёт одноразовый Shopify discount code на сумму amount (в фунтах)
+// Создаёт discount code через GraphQL Admin API (современный способ)
 async function createShopifyDiscount(shop: string, amount: number, code: string) {
   const token = process.env.SHOPIFY_ACCESS_TOKEN;
   if (!token) throw new Error("No SHOPIFY_ACCESS_TOKEN");
 
   const apiVersion = "2024-10";
+  const endpoint = `https://${shop}/admin/api/${apiVersion}/graphql.json`;
 
-  // 1. Создаём price rule (правило скидки)
-  const priceRuleRes = await fetch(
-    `https://${shop}/admin/api/${apiVersion}/price_rules.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token,
-      },
-      body: JSON.stringify({
-        price_rule: {
-          title: code,
-          target_type: "line_item",
-          target_selection: "all",
-          allocation_method: "across",
-          value_type: "fixed_amount",
-          value: `-${amount.toFixed(2)}`,
-          customer_selection: "all",
-          once_per_customer: true,
-          usage_limit: 1,
-          starts_at: new Date().toISOString(),
+  const mutation = `
+    mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
+      discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
+        codeDiscountNode { id }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const variables = {
+    basicCodeDiscount: {
+      title: code,
+      code: code,
+      startsAt: new Date().toISOString(),
+      customerSelection: { all: true },
+      customerGets: {
+        value: {
+          discountAmount: {
+            amount: amount.toFixed(2),
+            appliesOnEachItem: false,
+          },
         },
-      }),
-    }
-  );
-
-  if (!priceRuleRes.ok) {
-    const txt = await priceRuleRes.text();
-    throw new Error("Price rule failed: " + txt);
-  }
-  const priceRuleData = await priceRuleRes.json();
-  const priceRuleId = priceRuleData.price_rule.id;
-
-  // 2. Создаём discount code на основе price rule
-  const discountRes = await fetch(
-    `https://${shop}/admin/api/${apiVersion}/price_rules/${priceRuleId}/discount_codes.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token,
+        items: { all: true },
       },
-      body: JSON.stringify({ discount_code: { code } }),
-    }
-  );
+      appliesOncePerCustomer: true,
+      usageLimit: 1,
+    },
+  };
 
-  if (!discountRes.ok) {
-    const txt = await discountRes.text();
-    throw new Error("Discount code failed: " + txt);
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({ query: mutation, variables }),
+  });
+
+  const data = await res.json();
+
+  if (data.errors) {
+    throw new Error("GraphQL error: " + JSON.stringify(data.errors));
+  }
+
+  const result = data.data?.discountCodeBasicCreate;
+  if (result?.userErrors && result.userErrors.length > 0) {
+    throw new Error("Discount error: " + JSON.stringify(result.userErrors));
+  }
+
+  if (!result?.codeDiscountNode?.id) {
+    throw new Error("Discount not created: " + JSON.stringify(data));
   }
 
   return code;
@@ -130,7 +133,6 @@ export async function loader({ request }: any) {
 }
 
 // POST /api/redeem
-// Тело: { customer_id, shop, order_total, redeem_amount, order_id? }
 export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -178,7 +180,7 @@ export async function action({ request }: any) {
     // Генерируем уникальный код
     const code = "WALLET-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Создаём настоящую скидку в Shopify
+    // Создаём настоящую скидку в Shopify через GraphQL
     try {
       await createShopifyDiscount(shop, toRedeem, code);
     } catch (discountErr: any) {
@@ -205,7 +207,7 @@ export async function action({ request }: any) {
       },
     });
 
-    console.log(`[redeem] ✅ ${toRedeem} pts redeemed for ${customerId}, code ${code}`);
+    console.log(`[redeem] OK ${toRedeem} pts redeemed for ${customerId}, code ${code}`);
 
     return json({
       success:    true,
