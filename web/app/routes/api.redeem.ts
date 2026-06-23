@@ -19,10 +19,36 @@ const json = (data: any, status = 200, request?: any) =>
     },
   });
 
+// Получает свежий Admin API токen (shpat_) через client credentials grant.
+// Токены живут 24ч, поэтому получаем новый при каждом вызове.
+async function getAdminToken(shop: string): Promise<string> {
+  const clientId     = process.env.SHOPIFY_API_KEY;
+  const clientSecret = process.env.SHOPIFY_API_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET");
+  }
+
+  const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      client_id:     clientId,
+      client_secret: clientSecret,
+      grant_type:    "client_credentials",
+    }),
+  });
+
+  const data: any = await res.json();
+  if (!data.access_token) {
+    throw new Error("Token grant failed: " + JSON.stringify(data));
+  }
+  return data.access_token;  // shpat_...
+}
+
 // Создаёт discount code через GraphQL Admin API (современный способ)
 async function createShopifyDiscount(shop: string, amount: number, code: string) {
-  const token = process.env.SHOPIFY_ACCESS_TOKEN;
-  if (!token) throw new Error("No SHOPIFY_ACCESS_TOKEN");
+  // Получаем свежий рабочий токен
+  const token = await getAdminToken(shop);
 
   const apiVersion = "2024-10";
   const endpoint = `https://${shop}/admin/api/${apiVersion}/graphql.json`;
@@ -56,44 +82,30 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
     },
   };
 
-  // app automation tokens (atkn_) используют Bearer auth,
-  // классические Admin API токены (shpat_) используют X-Shopify-Access-Token.
-  // Пробуем оба варианта.
-  var headerVariants = [
-    { "X-Shopify-Access-Token": token },
-    { "Authorization": "Bearer " + token },
-  ];
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
+    },
+    body: JSON.stringify({ query: mutation, variables }),
+  });
 
-  var lastError = "";
-  for (var i = 0; i < headerVariants.length; i++) {
-    var res = await fetch(endpoint, {
-      method: "POST",
-      headers: Object.assign(
-        { "Content-Type": "application/json" },
-        headerVariants[i]
-      ),
-      body: JSON.stringify({ query: mutation, variables }),
-    });
+  const data: any = await res.json();
 
-    var data: any = await res.json();
-
-    // Если токен не принят — пробуем следующий вариант заголовка
-    if (data.errors) {
-      lastError = "GraphQL error: " + JSON.stringify(data.errors);
-      continue;
-    }
-
-    var result = data.data && data.data.discountCodeBasicCreate;
-    if (result && result.userErrors && result.userErrors.length > 0) {
-      throw new Error("Discount error: " + JSON.stringify(result.userErrors));
-    }
-    if (result && result.codeDiscountNode && result.codeDiscountNode.id) {
-      return code;  // успех
-    }
-    lastError = "Discount not created: " + JSON.stringify(data);
+  if (data.errors) {
+    throw new Error("GraphQL error: " + JSON.stringify(data.errors));
   }
 
-  throw new Error(lastError || "All auth methods failed");
+  const result = data.data && data.data.discountCodeBasicCreate;
+  if (result && result.userErrors && result.userErrors.length > 0) {
+    throw new Error("Discount error: " + JSON.stringify(result.userErrors));
+  }
+  if (!result || !result.codeDiscountNode || !result.codeDiscountNode.id) {
+    throw new Error("Discount not created: " + JSON.stringify(data));
+  }
+
+  return code;
 }
 
 // GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
