@@ -13,6 +13,19 @@ export const action = async ({ request }: any) => {
     const orderName = body.name || "";
     const totalPrice = parseFloat(body.total_price || "0");
 
+    // Названия товаров заказа (для истории)
+    let orderProductNames = "";
+    let orderFirstHandle = "";
+    try {
+      if (Array.isArray(body.line_items) && body.line_items.length > 0) {
+        orderProductNames = body.line_items
+          .map((li: any) => li.title || li.name || "")
+          .filter(Boolean)
+          .join(", ");
+        orderFirstHandle = body.line_items[0]?.handle || "";
+      }
+    } catch (e) {}
+
     if (!customerId || totalPrice <= 0) {
       return new Response("OK");
     }
@@ -79,7 +92,9 @@ export const action = async ({ request }: any) => {
             orderId,
             type:        "cashback_pending",
             amount:      cashback,
-            description: `Cashback 10% for order ${orderName} (pending until month 4)`,
+            description: orderProductNames
+              ? `Cashback 10% · ${orderProductNames} (pending until month 4)` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
+              : `Cashback 10% for order ${orderName} (pending until month 4)`,
           },
         });
         console.log(`⏳ Pending cashback +${cashback} for ${customerId} (month ${months})`);
@@ -101,7 +116,9 @@ export const action = async ({ request }: any) => {
             orderId,
             type:        "cashback",
             amount:      cashback,
-            description: `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
+            description: orderProductNames
+              ? `Cashback ${Math.round(rate * 100)}% · ${orderProductNames}` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
+              : `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
           },
         });
         console.log(`✅ Cashback +${cashback} (${Math.round(rate*100)}%) for ${customerId} (month ${months})`);
@@ -138,7 +155,9 @@ export const action = async ({ request }: any) => {
               orderId,
               type:        "referral_bonus",
               amount:      bonus,
-              description: `Referral ${Math.round(bonusRate * 100)}% — friend order ${orderName}`,
+              description: orderProductNames
+                ? `Referral ${Math.round(bonusRate * 100)}% — friend order: ${orderProductNames}` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
+                : `Referral ${Math.round(bonusRate * 100)}% — friend order ${orderName}`,
             },
           });
           await prisma.referral.update({
