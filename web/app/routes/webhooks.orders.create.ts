@@ -79,7 +79,7 @@ export const action = async ({ request }: any) => {
             orderId,
             type:        "cashback_pending",
             amount:      cashback,
-            description: `Кэшбэк 10% за заказ ${orderName} (pending до 4 мес)`,
+            description: `Cashback 10% for order ${orderName} (pending until month 4)`,
           },
         });
         console.log(`⏳ Pending cashback +${cashback} for ${customerId} (month ${months})`);
@@ -101,7 +101,7 @@ export const action = async ({ request }: any) => {
             orderId,
             type:        "cashback",
             amount:      cashback,
-            description: `Кэшбэк ${Math.round(rate * 100)}% за заказ ${orderName}`,
+            description: `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
           },
         });
         console.log(`✅ Cashback +${cashback} (${Math.round(rate*100)}%) for ${customerId} (month ${months})`);
@@ -138,7 +138,7 @@ export const action = async ({ request }: any) => {
               orderId,
               type:        "referral_bonus",
               amount:      bonus,
-              description: `Реферал ${Math.round(bonusRate * 100)}% — заказ друга ${orderName}`,
+              description: `Referral ${Math.round(bonusRate * 100)}% — friend order ${orderName}`,
             },
           });
           await prisma.referral.update({
