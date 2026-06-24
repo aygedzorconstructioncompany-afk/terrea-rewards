@@ -19,7 +19,6 @@ const json = (data: any, status = 200, request?: any) =>
     },
   });
 
-// OPTIONS preflight
 export async function loader({ request }: any) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
@@ -31,7 +30,7 @@ export async function action({ request }: any) {
 
   try {
     const { customer_id, code, shop } = await request.json();
-   const shopId = shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+    const shopId = shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id || !code) {
       return json({ error: "Missing data" }, 400, request);
@@ -51,11 +50,17 @@ export async function action({ request }: any) {
       return json({ error: "Cannot use your own code" }, 400, request);
     }
 
-    // Найти или создать кошелёк реферала
+    // 🚫 Анти-кольцо: реферрер сам был приглашён этим пользователем
+    if (referrerWallet.referredBy === String(customer_id)) {
+      return json({ error: "Circular referral not allowed" }, 400, request);
+    }
+
+    // Найти кошелёк реферала
     let refereeWallet = await prisma.wallet.findFirst({
       where: { shop: shopId, customerId: String(customer_id) },
     });
 
+    // Уже есть реферер — нельзя менять
     if (refereeWallet?.referredBy) {
       return json({ error: "You already used a referral code" }, 400, request);
     }
@@ -63,34 +68,36 @@ export async function action({ request }: any) {
     if (!refereeWallet) {
       refereeWallet = await prisma.wallet.create({
         data: {
-          shop: shopId,
+          shop:       shopId,
           customerId: String(customer_id),
-          balance: 0,
+          balance:    0,
           referredBy: referrerWallet.customerId,
         },
       });
     } else {
       refereeWallet = await prisma.wallet.update({
         where: { id: refereeWallet.id },
-        data: { referredBy: referrerWallet.customerId },
+        data:  { referredBy: referrerWallet.customerId },
       });
     }
 
-    // Создать запись реферала
- await prisma.referral.upsert({
-  where: { referrerCode: code },
-  create: {
-    shop:         shopId,
-    referrerCode: code,
-    referrerId:   referrerWallet.customerId,
-    refereeId:    String(customer_id),
-    status:       "pending",
-  },
-  update: {
-    refereeId: String(customer_id),
-    status:    "pending",
-  },
-});
+    // Создать/обновить запись реферала — сохраняем appliedAt
+    await prisma.referral.upsert({
+      where:  { referrerCode: code },
+      create: {
+        shop:         shopId,
+        referrerCode: code,
+        referrerId:   referrerWallet.customerId,
+        refereeId:    String(customer_id),
+        status:       "pending",
+        appliedAt:    new Date(),
+      },
+      update: {
+        refereeId: String(customer_id),
+        status:    "pending",
+        appliedAt: new Date(),
+      },
+    });
 
     console.log(`[referral/apply] ✅ ${customer_id} applied code ${code} from ${referrerWallet.customerId}`);
 
