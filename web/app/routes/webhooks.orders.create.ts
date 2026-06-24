@@ -6,16 +6,16 @@ export const action = async ({ request }: any) => {
       return new Response("Method not allowed", { status: 405 });
     }
 
-    const body = await request.json();
-    const shop = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+    const body       = await request.json();
+    const shop       = request.headers.get("x-shopify-shop-domain") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
     const customerId = body.customer?.id?.toString();
-    const orderId = String(body.id);
-    const orderName = body.name || "";
+    const orderId    = String(body.id);
+    const orderName  = body.name || "";
     const totalPrice = parseFloat(body.total_price || "0");
 
     // Названия товаров заказа (для истории)
     let orderProductNames = "";
-    let orderFirstHandle = "";
+    let orderFirstHandle  = "";
     try {
       if (Array.isArray(body.line_items) && body.line_items.length > 0) {
         orderProductNames = body.line_items
@@ -63,16 +63,16 @@ export const action = async ({ request }: any) => {
     if (!wallet) return new Response("OK");
 
     // ── Тиры и кэшбэк ────────────────────────────────────────────────────────
-    // Start (1-3 мес)  → 10%, pending (не выплачивается сразу)
-    // Stay  (4-6 мес)  → 15%, начисляется сразу
-    // Belong (7-9 мес) → 20%, начисляется сразу
-    // Belong+ (10+ мес)→ 20%, начисляется сразу
+    // Start   (1-3 мес)  → 10%, pending
+    // Stay    (4-6 мес)  → 15%, сразу
+    // Belong  (7-9 мес)  → 20%, сразу
+    // Belong+ (10+ мес)  → 20%, сразу
     const months = sub.monthsActive;
-    let rate = 0.10;
+    let rate    = 0.10;
     let pending = true;
 
-    if (months >= 4) { rate = 0.15; pending = false; }
-    if (months >= 7) { rate = 0.20; pending = false; }
+    if (months >= 4)  { rate = 0.15; pending = false; }
+    if (months >= 7)  { rate = 0.20; pending = false; }
     if (months >= 10) { rate = 0.20; pending = false; }
 
     const cashback = Math.round(totalPrice * rate);
@@ -99,7 +99,7 @@ export const action = async ({ request }: any) => {
         });
         console.log(`⏳ Pending cashback +${cashback} for ${customerId} (month ${months})`);
       } else {
-        // Stay/Belong/Belong+ — начисляем сразу на баланс
+        // Stay/Belong/Belong+ — начисляем сразу
         await prisma.wallet.update({
           where: { shop_customer: { shop, customerId } },
           data:  { balance: { increment: cashback } },
@@ -121,55 +121,75 @@ export const action = async ({ request }: any) => {
               : `Cashback ${Math.round(rate * 100)}% for order ${orderName}`,
           },
         });
-        console.log(`✅ Cashback +${cashback} (${Math.round(rate*100)}%) for ${customerId} (month ${months})`);
+        console.log(`✅ Cashback +${cashback} (${Math.round(rate * 100)}%) for ${customerId} (month ${months})`);
       }
     }
 
     // ── Реферальные баллы ─────────────────────────────────────────────────────
-    // Первый заказ реферала → 15% реферреру
-    // Следующие заказы → 5% реферреру
     const referral = await prisma.referral.findFirst({
       where: { shop, refereeId: customerId },
     });
 
     if (referral) {
-      const referrerWallet = await prisma.wallet.findFirst({
-        where: { shop, customerId: referral.referrerId },
-      });
+      const REFERRAL_EXPIRY_DAYS = 30;
+      const appliedAt = referral.appliedAt;
 
-      if (referrerWallet) {
-        const isFirstOrder = referral.status === "pending";
-        const bonusRate    = isFirstOrder ? 0.15 : 0.05;
-        const bonus        = Math.round(totalPrice * bonusRate);
+      if (!appliedAt) {
+        // Старые записи без appliedAt — пропускаем
+        console.log(`⚠️ Referral has no appliedAt for ${customerId}, skipping`);
+      } else {
+        const daysSinceApplied =
+          (Date.now() - new Date(appliedAt).getTime()) / (1000 * 60 * 60 * 24);
 
-        if (bonus > 0) {
-          await prisma.wallet.update({
-            where: { shop_customer: { shop, customerId: referral.referrerId } },
-            data:  { balance: { increment: bonus } },
+        if (daysSinceApplied > REFERRAL_EXPIRY_DAYS) {
+          // ❌ Срок истёк
+          console.log(
+            `⏰ Referral expired for ${customerId}: ${Math.round(daysSinceApplied)} days since applied (max ${REFERRAL_EXPIRY_DAYS})`
+          );
+        } else {
+          // ✅ В срок — начисляем реферреру
+          const referrerWallet = await prisma.wallet.findFirst({
+            where: { shop, customerId: referral.referrerId },
           });
-          await prisma.pointsTransaction.create({
-            data: {
-              walletId:    referrerWallet.id,
-              shop,
-              customerId:  referral.referrerId,
-              orderId,
-              type:        "referral_bonus",
-              amount:      bonus,
-              description: orderProductNames
-                ? `Referral ${Math.round(bonusRate * 100)}% — friend order: ${orderProductNames}` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
-                : `Referral ${Math.round(bonusRate * 100)}% — friend order ${orderName}`,
-            },
-          });
-          await prisma.referral.update({
-            where: { id: referral.id },
-            data: {
-              status:          "active",
-              firstOrderBonus: isFirstOrder ? bonus : referral.firstOrderBonus,
-              totalBonus:      { increment: bonus },
-              completedAt:     isFirstOrder ? new Date() : referral.completedAt,
-            },
-          });
-          console.log(`🎁 Referral bonus +${bonus} (${Math.round(bonusRate*100)}%) to ${referral.referrerId}`);
+
+          if (referrerWallet) {
+            const isFirstOrder = referral.status === "pending";
+            const bonusRate    = isFirstOrder ? 0.15 : 0.05;
+            const bonus        = Math.round(totalPrice * bonusRate);
+
+            if (bonus > 0) {
+              await prisma.wallet.update({
+                where: { shop_customer: { shop, customerId: referral.referrerId } },
+                data:  { balance: { increment: bonus } },
+              });
+              await prisma.pointsTransaction.create({
+                data: {
+                  walletId:    referrerWallet.id,
+                  shop,
+                  customerId:  referral.referrerId,
+                  orderId,
+                  type:        "referral_bonus",
+                  amount:      bonus,
+                  description: orderProductNames
+                    ? `Referral ${Math.round(bonusRate * 100)}% — friend order: ${orderProductNames}` +
+                      (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
+                    : `Referral ${Math.round(bonusRate * 100)}% — friend order ${orderName}`,
+                },
+              });
+              await prisma.referral.update({
+                where: { id: referral.id },
+                data: {
+                  status:          "active",
+                  firstOrderBonus: isFirstOrder ? bonus : referral.firstOrderBonus,
+                  totalBonus:      { increment: bonus },
+                  completedAt:     isFirstOrder ? new Date() : referral.completedAt,
+                },
+              });
+              console.log(
+                `🎁 Referral bonus +${bonus} (${Math.round(bonusRate * 100)}%) to ${referral.referrerId} [day ${Math.round(daysSinceApplied)}/${REFERRAL_EXPIRY_DAYS}]`
+              );
+            }
+          }
         }
       }
     }
