@@ -29,7 +29,6 @@ export async function loader({ request }: any) {
     process.env.SHOPIFY_SHOP_DOMAIN ||
     "terrea-home-rituals.myshopify.com";
 
-  // ← Кастомный домен для ссылки
   const SHOP_URL = process.env.SHOP_PUBLIC_URL || "https://terrea.co.uk";
 
   if (!customerId) {
@@ -95,15 +94,14 @@ export async function loader({ request }: any) {
       }
     }
 
-    // ← Готовая ссылка с кастомным доменом
     const referralUrl = wallet?.referralCode
-      ? `${SHOP_URL}/pages/join?ref=${wallet.referralCode}`
+      ? `${SHOP_URL}/pages/rewards?ref=${wallet.referralCode}`
       : null;
 
     return Response.json(
       {
         code:          wallet?.referralCode,
-        referralUrl,                          // ← НОВОЕ
+        referralUrl,
         referredBy,
         referredByName,
         stats: {
