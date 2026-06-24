@@ -24,9 +24,9 @@ model Wallet {
 }
 
 model PointsTransaction {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   walletId    String
-  wallet      Wallet   @relation(fields: [walletId], references: [id])
+  wallet      Wallet    @relation(fields: [walletId], references: [id])
   shop        String
   customerId  String
   orderId     String?
@@ -38,34 +38,34 @@ model PointsTransaction {
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
 
 model Discount {
-  id          String   @id @default(cuid())
-  code        String   @unique
-  customerId  String
-  shop        String
-  amount      Float
-  used        Boolean  @default(false)
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  code       String   @unique
+  customerId String
+  shop       String
+  amount     Float
+  used       Boolean  @default(false)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
 }
 
 model Setting {
@@ -98,6 +98,7 @@ model Referral {
   status          String    @default("pending")
   firstOrderBonus Int       @default(0)
   totalBonus      Int       @default(0)
+  appliedAt       DateTime? // ← НОВОЕ: момент применения ссылки (для 30 дней)
   completedAt     DateTime?
   createdAt       DateTime  @default(now())
 }
