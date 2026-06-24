@@ -176,6 +176,7 @@ export async function action({ request }: any) {
     order_id:      orderId,
     order_total:   orderTotal,
     redeem_amount: redeemAmount,
+    products:      products,
   } = body;
 
   if (!customerId || !orderTotal) {
@@ -219,6 +220,21 @@ export async function action({ request }: any) {
       data:  { balance: { decrement: toRedeem } },
     });
 
+    // Формируем описание с названиями товаров корзины.
+    // Формат: "Redeemed 9 pts · Product A, Product B ||handle"
+    // (часть после "||" — handle первого товара для ссылки, фронтенд её отрезает)
+    let description = `Redeemed ${toRedeem} pts → code ${code}`;
+    if (Array.isArray(products) && products.length > 0) {
+      const names = products
+        .map((p: any) => (p && p.title ? String(p.title) : ""))
+        .filter(Boolean);
+      const firstHandle = products[0] && products[0].handle ? String(products[0].handle) : "";
+      if (names.length > 0) {
+        description = `Redeemed ${toRedeem} pts · ${names.join(", ")}`;
+        if (firstHandle) description += ` ||${firstHandle}`;
+      }
+    }
+
     // Записать транзакцию
     await prisma.pointsTransaction.create({
       data: {
@@ -228,7 +244,7 @@ export async function action({ request }: any) {
         orderId:     orderId || ("manual-" + Date.now()),
         type:        "redeemed",
         amount:      -toRedeem,
-        description: `Redeemed ${toRedeem} pts → code ${code}`,
+        description,
       },
     });
 
