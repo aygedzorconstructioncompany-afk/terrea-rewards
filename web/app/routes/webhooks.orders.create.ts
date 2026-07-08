@@ -54,13 +54,11 @@ export const action = async ({ request }: any) => {
         const toRedeem   = discountRecord.amount;
         const walletCust = discountRecord.customerId;
 
-        // Найти кошелёк по id (без составного ключа)
         const w = await prisma.wallet.findFirst({
           where: { customerId: walletCust },
         });
 
         if (w) {
-          // Списать баллы по id
           await prisma.wallet.update({
             where: { id: w.id },
             data:  { balance: { decrement: toRedeem } },
@@ -74,9 +72,11 @@ export const action = async ({ request }: any) => {
               orderId,
               type:        "redeemed",
               amount:      -toRedeem,
-              description: orderProductNames
-                ? `Redeemed ${toRedeem} pts · ${orderProductNames}` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
-                : `Redeemed ${toRedeem} pts for order ${orderName}`,
+              // ← берём описание с товарами и handle из сохранённой записи
+              description: discountRecord.note ||
+                (orderProductNames
+                  ? `Redeemed ${toRedeem} pts · ${orderProductNames}` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
+                  : `Redeemed ${toRedeem} pts for order ${orderName}`),
             },
           });
 
