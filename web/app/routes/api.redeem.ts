@@ -29,9 +29,9 @@ async function getAdminToken(shop: string): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      client_id:     clientId,
+      client_id:      clientId,
       client_secret: clientSecret,
-      grant_type:    "client_credentials",
+      grant_type:     "client_credentials",
     }),
   });
   const data: any = await res.json();
@@ -60,6 +60,15 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
       title: code,
       code: code,
       startsAt: new Date().toISOString(),
+      
+      // ─── ДОБАВЛЕНО: РАЗРЕШЕНИЕ НА КОМБИНАЦИЮ СКИДОК ───
+      combinesWith: {
+        orderDiscounts: true,   // Совместимость со скидками на весь заказ
+        productDiscounts: true, // Совместимость со скидками на отдельные товары (ваш подарок)
+        shippingDiscounts: true // Совместимость со скидками на доставку
+      },
+      // ─────────────────────────────────────────────────
+      
       customerSelection: { all: true },
       customerGets: {
         value: {
