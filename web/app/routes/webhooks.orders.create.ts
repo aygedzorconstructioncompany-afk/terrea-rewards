@@ -39,6 +39,59 @@ export const action = async ({ request }: any) => {
       return new Response("Already processed");
     }
 
+    // ── Списание баллов Wallet при использовании WALLET- кода ────────────────
+    const discountCodes: any[] = body.discount_codes || [];
+    const walletDiscount = discountCodes.find((d: any) =>
+      d.code && d.code.startsWith("WALLET-")
+    );
+
+    if (walletDiscount) {
+      const walletCode = walletDiscount.code;
+
+      const discountRecord = await prisma.discount.findUnique({
+        where: { code: walletCode },
+      });
+
+      if (discountRecord && !discountRecord.used) {
+        const toRedeem = discountRecord.amount;
+
+        // Списать баллы
+        await prisma.wallet.update({
+          where: { shop_customer: { shop, customerId: discountRecord.customerId } },
+          data:  { balance: { decrement: toRedeem } },
+        });
+
+        // Найти кошелёк для walletId
+        const w = await prisma.wallet.findUnique({
+          where: { shop_customer: { shop, customerId: discountRecord.customerId } },
+        });
+
+        if (w) {
+          await prisma.pointsTransaction.create({
+            data: {
+              walletId:    w.id,
+              shop,
+              customerId:  discountRecord.customerId,
+              orderId,
+              type:        "redeemed",
+              amount:      -toRedeem,
+              description: orderProductNames
+                ? `Redeemed ${toRedeem} pts · ${orderProductNames}` + (orderFirstHandle ? ` ||${orderFirstHandle}` : "")
+                : `Redeemed ${toRedeem} pts for order ${orderName}`,
+            },
+          });
+        }
+
+        // Отметить скидку как использованную
+        await prisma.discount.update({
+          where: { code: walletCode },
+          data:  { used: true },
+        });
+
+        console.log(`💳 Wallet ${toRedeem} pts deducted for ${discountRecord.customerId} (code ${walletCode})`);
+      }
+    }
+
     // Найти подписку
     const sub = await prisma.subscription.findFirst({
       where: { shop, customerId },
@@ -63,10 +116,6 @@ export const action = async ({ request }: any) => {
     if (!wallet) return new Response("OK");
 
     // ── Тиры и кэшбэк ────────────────────────────────────────────────────────
-    // Start   (1-3 мес)  → 10%, pending
-    // Stay    (4-6 мес)  → 15%, сразу
-    // Belong  (7-9 мес)  → 20%, сразу
-    // Belong+ (10+ мес)  → 20%, сразу
     const months = sub.monthsActive;
     let rate    = 0.10;
     let pending = true;
@@ -79,7 +128,6 @@ export const action = async ({ request }: any) => {
 
     if (cashback > 0) {
       if (pending) {
-        // Start тир — копим в pendingPoints
         await prisma.subscription.update({
           where: { id: sub.id },
           data:  { pendingPoints: { increment: cashback }, lastOrderAt: new Date() },
@@ -99,7 +147,6 @@ export const action = async ({ request }: any) => {
         });
         console.log(`⏳ Pending cashback +${cashback} for ${customerId} (month ${months})`);
       } else {
-        // Stay/Belong/Belong+ — начисляем сразу
         await prisma.wallet.update({
           where: { shop_customer: { shop, customerId } },
           data:  { balance: { increment: cashback } },
@@ -135,19 +182,14 @@ export const action = async ({ request }: any) => {
       const appliedAt = referral.appliedAt;
 
       if (!appliedAt) {
-        // Старые записи без appliedAt — пропускаем
         console.log(`⚠️ Referral has no appliedAt for ${customerId}, skipping`);
       } else {
         const daysSinceApplied =
           (Date.now() - new Date(appliedAt).getTime()) / (1000 * 60 * 60 * 24);
 
         if (daysSinceApplied > REFERRAL_EXPIRY_DAYS) {
-          // ❌ Срок истёк
-          console.log(
-            `⏰ Referral expired for ${customerId}: ${Math.round(daysSinceApplied)} days since applied (max ${REFERRAL_EXPIRY_DAYS})`
-          );
+          console.log(`⏰ Referral expired for ${customerId}: ${Math.round(daysSinceApplied)} days since applied (max ${REFERRAL_EXPIRY_DAYS})`);
         } else {
-          // ✅ В срок — начисляем реферреру
           const referrerWallet = await prisma.wallet.findFirst({
             where: { shop, customerId: referral.referrerId },
           });
@@ -185,9 +227,7 @@ export const action = async ({ request }: any) => {
                   completedAt:     isFirstOrder ? new Date() : referral.completedAt,
                 },
               });
-              console.log(
-                `🎁 Referral bonus +${bonus} (${Math.round(bonusRate * 100)}%) to ${referral.referrerId} [day ${Math.round(daysSinceApplied)}/${REFERRAL_EXPIRY_DAYS}]`
-              );
+              console.log(`🎁 Referral bonus +${bonus} (${Math.round(bonusRate * 100)}%) to ${referral.referrerId} [day ${Math.round(daysSinceApplied)}/${REFERRAL_EXPIRY_DAYS}]`);
             }
           }
         }
