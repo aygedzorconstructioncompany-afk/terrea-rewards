@@ -6,7 +6,7 @@ function getCashbackRate(monthsActive: number): number {
   if (monthsActive >= 7) return 0.20;
   if (monthsActive >= 4) return 0.15;
   return 0.10;
-} 
+}
 
 function getPendingDescription(monthsActive: number, rate: number, orderName: string): string {
   if (monthsActive < 4) return `Cashback ${Math.round(rate * 100)}% for order ${orderName} (pending, paid on month 4)`;
@@ -31,14 +31,14 @@ export async function action({ request }: ActionFunctionArgs) {
     return new Response("Bad JSON", { status: 400 });
   }
 
-  const customerId = String(payload.customer?.id || "");
-  const orderTotal = parseFloat(payload.subtotal_price || "0");
-  const orderId = String(payload.id || "");
-  const orderName = payload.name || "";
-  const tags = (payload.tags || "").toLowerCase();
-  const sourceName = (payload.source_name || "").toLowerCase();
+  const customerId  = String(payload.customer?.id || "");
+  const orderTotal  = parseFloat(payload.subtotal_price || "0");
+  const orderId     = String(payload.id || "");
+  const orderName   = payload.name || "";
+  const tags        = (payload.tags || "").toLowerCase();
+  const sourceName  = (payload.source_name || "").toLowerCase();
   const customerEmail = payload.customer?.email || payload.email || "";
-  const customerName = [payload.customer?.first_name, payload.customer?.last_name].filter(Boolean).join(' ') || customerEmail;
+  const customerName  = [payload.customer?.first_name, payload.customer?.last_name].filter(Boolean).join(' ') || customerEmail;
 
   const isSubscription =
     tags.includes("subscription") ||
@@ -54,6 +54,61 @@ export async function action({ request }: ActionFunctionArgs) {
   console.log(`[orders/paid] shop=${shop} customer=${customerId} order=${orderName} total=${orderTotal} subscription=${isSubscription}`);
 
   try {
+    // ── Списание баллов Wallet при использовании WALLET- кода ────────────────
+    const discountCodes: any[] = payload.discount_codes || [];
+    const walletDiscount = discountCodes.find((d: any) =>
+      d.code && d.code.startsWith("WALLET-")
+    );
+
+    if (walletDiscount) {
+      const walletCode = walletDiscount.code;
+      console.log(`[orders/paid] 💳 Found WALLET code: ${walletCode}`);
+
+      const discountRecord = await prisma.discount.findUnique({
+        where: { code: walletCode },
+      });
+
+      if (discountRecord && !discountRecord.used) {
+        const toRedeem   = discountRecord.amount;
+        const walletCust = discountRecord.customerId;
+
+        const w = await prisma.wallet.findFirst({
+          where: { customerId: walletCust },
+        });
+
+        if (w) {
+          await prisma.wallet.update({
+            where: { id: w.id },
+            data:  { balance: { decrement: toRedeem } },
+          });
+
+          await prisma.pointsTransaction.create({
+            data: {
+              walletId:    w.id,
+              shop:        w.shop,
+              customerId:  walletCust,
+              orderId,
+              type:        "redeemed",
+              amount:      -toRedeem,
+              description: discountRecord.note ||
+                `Redeemed ${toRedeem} pts for order ${orderName}`,
+            },
+          });
+
+          await prisma.discount.update({
+            where: { code: walletCode },
+            data:  { used: true },
+          });
+
+          console.log(`[orders/paid] 💳 Wallet ${toRedeem} pts deducted for ${walletCust} (code ${walletCode})`);
+        } else {
+          console.log(`[orders/paid] ⚠️ Wallet not found for ${walletCust}`);
+        }
+      } else {
+        console.log(`[orders/paid] ⚠️ Discount ${walletCode} not found or already used`);
+      }
+    }
+
     const existingOrder = await prisma.pointsTransaction.findFirst({
       where: {
         orderId,
@@ -69,7 +124,6 @@ export async function action({ request }: ActionFunctionArgs) {
     if (!isSubscription) {
       console.log(`[orders/paid] 📦 Regular order ${orderName} — referral bonus only`);
 
-      // ✅ Активируем подписку если она cancelled но есть товары
       const subCheck = await prisma.subscription.findFirst({
         where: { shop: MAIN_SHOP, customerId }
       });
@@ -189,9 +243,9 @@ export async function action({ request }: ActionFunctionArgs) {
       }
     }
 
-    const rate = getCashbackRate(newMonthsActive);
+    const rate     = getCashbackRate(newMonthsActive);
     const cashback = Math.round(orderTotal * rate);
-    const pending =
+    const pending  =
       newMonthsActive < 4 ||
       (newMonthsActive > 4 && newMonthsActive < 7) ||
       (newMonthsActive > 7 && newMonthsActive < 10);
@@ -269,8 +323,8 @@ async function processReferralBonus(shop: string, customerId: string, orderId: s
     if (existingReferral) { console.log(`[referral] ⚠️ Duplicate prevented for ${orderName}`); return; }
 
     const isFirstOrder = referral.status === "pending";
-    const bonusRate = isFirstOrder ? 0.15 : 0.05;
-    const bonus = Math.round(orderTotal * bonusRate);
+    const bonusRate    = isFirstOrder ? 0.15 : 0.05;
+    const bonus        = Math.round(orderTotal * bonusRate);
     if (bonus <= 0) return;
 
     await prisma.wallet.update({
