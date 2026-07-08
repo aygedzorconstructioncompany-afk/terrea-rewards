@@ -19,15 +19,12 @@ const json = (data: any, status = 200, request?: any) =>
     },
   });
 
-// Получает свежий Admin API токen (shpat_) через client credentials grant.
-// Токены живут 24ч, поэтому получаем новый при каждом вызове.
 async function getAdminToken(shop: string): Promise<string> {
   const clientId     = process.env.SHOPIFY_API_KEY;
   const clientSecret = process.env.SHOPIFY_API_SECRET;
   if (!clientId || !clientSecret) {
     throw new Error("Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET");
   }
-
   const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,19 +34,15 @@ async function getAdminToken(shop: string): Promise<string> {
       grant_type:    "client_credentials",
     }),
   });
-
   const data: any = await res.json();
   if (!data.access_token) {
     throw new Error("Token grant failed: " + JSON.stringify(data));
   }
-  return data.access_token;  // shpat_...
+  return data.access_token;
 }
 
-// Создаёт discount code через GraphQL Admin API (современный способ)
 async function createShopifyDiscount(shop: string, amount: number, code: string) {
-  // Получаем свежий рабочий токен
   const token = await getAdminToken(shop);
-
   const apiVersion = "2024-10";
   const endpoint = `https://${shop}/admin/api/${apiVersion}/graphql.json`;
 
@@ -92,23 +85,15 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
   });
 
   const data: any = await res.json();
-
-  if (data.errors) {
-    throw new Error("GraphQL error: " + JSON.stringify(data.errors));
-  }
+  if (data.errors) throw new Error("GraphQL error: " + JSON.stringify(data.errors));
 
   const result = data.data && data.data.discountCodeBasicCreate;
-  if (result && result.userErrors && result.userErrors.length > 0) {
-    throw new Error("Discount error: " + JSON.stringify(result.userErrors));
-  }
-  if (!result || !result.codeDiscountNode || !result.codeDiscountNode.id) {
-    throw new Error("Discount not created: " + JSON.stringify(data));
-  }
+  if (result?.userErrors?.length > 0) throw new Error("Discount error: " + JSON.stringify(result.userErrors));
+  if (!result?.codeDiscountNode?.id) throw new Error("Discount not created: " + JSON.stringify(data));
 
   return code;
 }
 
-// GET /api/redeem?customer_id=xxx&shop=xxx&order_total=xxx
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -119,19 +104,12 @@ export async function loader({ request }: any) {
   const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
   const orderTotal = parseFloat(url.searchParams.get("order_total") || "0");
 
-  if (!customerId) {
-    return json({ error: "No customer_id" }, 400, request);
-  }
+  if (!customerId) return json({ error: "No customer_id" }, 400, request);
 
   try {
     const wallet = await prisma.wallet.findUnique({
       where:   { shop_customer: { shop, customerId } },
-      include: {
-        transactions: {
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        },
-      },
+      include: { transactions: { orderBy: { createdAt: "desc" }, take: 10 } },
     });
 
     if (!wallet) {
@@ -157,23 +135,18 @@ export async function loader({ request }: any) {
   }
 }
 
-// POST /api/redeem
 export async function action({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
 
   let body: any;
-  try {
-    body = await request.json();
-  } catch {
-    return json({ error: "Bad JSON" }, 400, request);
-  }
+  try { body = await request.json(); }
+  catch { return json({ error: "Bad JSON" }, 400, request); }
 
   const {
     customer_id:   customerId,
     shop = process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com",
-    order_id:      orderId,
     order_total:   orderTotal,
     redeem_amount: redeemAmount,
     products:      products,
@@ -206,7 +179,7 @@ export async function action({ request }: any) {
     // Генерируем уникальный код
     const code = "WALLET-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
-    // Создаём настоящую скидку в Shopify через GraphQL
+    // Создаём скидку в Shopify
     try {
       await createShopifyDiscount(shop, toRedeem, code);
     } catch (discountErr: any) {
@@ -214,48 +187,37 @@ export async function action({ request }: any) {
       return json({ error: "Could not create discount: " + discountErr.message }, 500, request);
     }
 
-    // Списать с баланса ТОЛЬКО после успешного создания скидки
-    await prisma.wallet.update({
-      where: { shop_customer: { shop, customerId } },
-      data:  { balance: { decrement: toRedeem } },
-    });
-
-    // Формируем описание с названиями товаров корзины.
-    // Формат: "Redeemed 9 pts · Product A, Product B ||handle"
-    // (часть после "||" — handle первого товара для ссылки, фронтенд её отрезает)
-    let description = `Redeemed ${toRedeem} pts → code ${code}`;
+    // ✅ Сохраняем скидку в БД — баллы НЕ списываем здесь!
+    // Баллы спишутся в webhook после оплаты заказа.
+    let productNames = "";
+    let firstHandle  = "";
     if (Array.isArray(products) && products.length > 0) {
-      const names = products
-        .map((p: any) => (p && p.title ? String(p.title) : ""))
-        .filter(Boolean);
-      const firstHandle = products[0] && products[0].handle ? String(products[0].handle) : "";
-      if (names.length > 0) {
-        description = `Redeemed ${toRedeem} pts · ${names.join(", ")}`;
-        if (firstHandle) description += ` ||${firstHandle}`;
-      }
+      productNames = products.map((p: any) => p?.title || "").filter(Boolean).join(", ");
+      firstHandle  = products[0]?.handle || "";
     }
 
-    // Записать транзакцию
-    await prisma.pointsTransaction.create({
+    await prisma.discount.create({
       data: {
-        walletId:    wallet.id,
-        shop,
+        code,
         customerId,
-        orderId:     orderId || ("manual-" + Date.now()),
-        type:        "redeemed",
-        amount:      -toRedeem,
-        description,
+        shop,
+        amount:    toRedeem,
+        used:      false,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 дней
       },
     });
 
-    console.log(`[redeem] OK ${toRedeem} pts redeemed for ${customerId}, code ${code}`);
+    // Сохраняем описание товаров в localStorage через ответ
+    console.log(`[redeem] Discount ${code} created for ${customerId}, ${toRedeem} pts PENDING (not deducted yet)`);
 
     return json({
       success:    true,
       code,
       redeemed:   toRedeem,
-      newBalance: wallet.balance - toRedeem,
-      message:    `${toRedeem} pts applied`,
+      newBalance: wallet.balance, // баланс пока не изменился
+      productNames,
+      firstHandle,
+      message:    `${toRedeem} pts will be applied after payment`,
     }, 200, request);
 
   } catch (e: any) {
