@@ -33,7 +33,7 @@ async function getAdminToken(shop: string): Promise<string> {
   return data.access_token;
 }
 
-// ← НОВОЕ: удалить код скидки из Shopify по коду
+// Удалить код скидки из Shopify по коду
 async function deleteShopifyDiscountByCode(shop: string, code: string) {
   try {
     const token = await getAdminToken(shop);
@@ -83,6 +83,15 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
       title: code,
       code: code,
       startsAt: new Date().toISOString(),
+      
+      // ─── ДОБАВЛЕНО: ТОЧЕЧНАЯ НАСТРОЙКА КОМБИНАЦИЙ ───
+      combinesWith: {
+        orderDiscounts: false,   // false — чтобы новые WALLET-коды автоматически выбивали старые и они не копились
+        productDiscounts: true,  // true — чтобы кошелек работал одновременно с подарком AIOD (Fragrance)
+        shippingDiscounts: true  // true — чтобы работал одновременно со скидками на доставку
+      },
+      // ────────────────────────────────────────────────
+      
       customerSelection: { all: true },
       customerGets: {
         value: { discountAmount: { amount: amount.toFixed(2), appliesOnEachItem: false } },
@@ -189,7 +198,7 @@ export async function action({ request }: any) {
       return json({ error: "Redeem amount exceeds limit (max 50% of order total)" }, 400, request);
     }
 
-    // ← НОВОЕ: удаляем все старые неиспользованные WALLET коды этого клиента
+    // Удаляем все старые неиспользованные WALLET коды этого клиента
     const existingDiscounts = await prisma.discount.findMany({
       where: { customerId, shop, used: false },
     });
