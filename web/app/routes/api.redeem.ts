@@ -22,23 +22,46 @@ const json = (data: any, status = 200, request?: any) =>
 async function getAdminToken(shop: string): Promise<string> {
   const clientId     = process.env.SHOPIFY_API_KEY;
   const clientSecret = process.env.SHOPIFY_API_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error("Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET");
-  }
+  if (!clientId || !clientSecret) throw new Error("Missing SHOPIFY_API_KEY or SHOPIFY_API_SECRET");
   const res = await fetch(`https://${shop}/admin/oauth/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      client_id:      clientId,
-      client_secret: clientSecret,
-      grant_type:     "client_credentials",
-    }),
+    body: JSON.stringify({ client_id: clientId, client_secret: clientSecret, grant_type: "client_credentials" }),
   });
   const data: any = await res.json();
-  if (!data.access_token) {
-    throw new Error("Token grant failed: " + JSON.stringify(data));
-  }
+  if (!data.access_token) throw new Error("Token grant failed: " + JSON.stringify(data));
   return data.access_token;
+}
+
+// ← НОВОЕ: удалить код скидки из Shopify по коду
+async function deleteShopifyDiscountByCode(shop: string, code: string) {
+  try {
+    const token = await getAdminToken(shop);
+    const apiVersion = "2024-10";
+    const endpoint = `https://${shop}/admin/api/${apiVersion}/graphql.json`;
+
+    // Находим ID дисконта по коду
+    const findQuery = `{ codeDiscountNodeByCode(code: "${code}") { id } }`;
+    const findRes = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({ query: findQuery }),
+    });
+    const findData: any = await findRes.json();
+    const nodeId = findData?.data?.codeDiscountNodeByCode?.id;
+    if (!nodeId) return;
+
+    // Удаляем
+    const deleteMutation = `mutation { discountCodeDelete(id: "${nodeId}") { deletedCodeDiscountId } }`;
+    await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
+      body: JSON.stringify({ query: deleteMutation }),
+    });
+    console.log(`[redeem] 🗑️ Deleted old Shopify discount: ${code}`);
+  } catch (e: any) {
+    console.warn(`[redeem] Could not delete discount ${code}:`, e.message);
+  }
 }
 
 async function createShopifyDiscount(shop: string, amount: number, code: string) {
@@ -60,23 +83,9 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
       title: code,
       code: code,
       startsAt: new Date().toISOString(),
-      
-      // ─── ДОБАВЛЕНО: РАЗРЕШЕНИЕ НА КОМБИНАЦИЮ СКИДОК ───
-      combinesWith: {
-        orderDiscounts: true,   // Совместимость со скидками на весь заказ
-        productDiscounts: true, // Совместимость со скидками на отдельные товары (ваш подарок)
-        shippingDiscounts: true // Совместимость со скидками на доставку
-      },
-      // ─────────────────────────────────────────────────
-      
       customerSelection: { all: true },
       customerGets: {
-        value: {
-          discountAmount: {
-            amount: amount.toFixed(2),
-            appliesOnEachItem: false,
-          },
-        },
+        value: { discountAmount: { amount: amount.toFixed(2), appliesOnEachItem: false } },
         items: { all: true },
       },
       appliesOncePerCustomer: true,
@@ -86,20 +95,15 @@ async function createShopifyDiscount(shop: string, amount: number, code: string)
 
   const res = await fetch(endpoint, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Shopify-Access-Token": token,
-    },
+    headers: { "Content-Type": "application/json", "X-Shopify-Access-Token": token },
     body: JSON.stringify({ query: mutation, variables }),
   });
 
   const data: any = await res.json();
   if (data.errors) throw new Error("GraphQL error: " + JSON.stringify(data.errors));
-
   const result = data.data && data.data.discountCodeBasicCreate;
   if (result?.userErrors?.length > 0) throw new Error("Discount error: " + JSON.stringify(result.userErrors));
   if (!result?.codeDiscountNode?.id) throw new Error("Discount not created: " + JSON.stringify(data));
-
   return code;
 }
 
@@ -185,6 +189,23 @@ export async function action({ request }: any) {
       return json({ error: "Redeem amount exceeds limit (max 50% of order total)" }, 400, request);
     }
 
+    // ← НОВОЕ: удаляем все старые неиспользованные WALLET коды этого клиента
+    const existingDiscounts = await prisma.discount.findMany({
+      where: { customerId, shop, used: false },
+    });
+
+    for (const oldDiscount of existingDiscounts) {
+      await deleteShopifyDiscountByCode(shop, oldDiscount.code);
+      await prisma.discount.update({
+        where: { id: oldDiscount.id },
+        data:  { used: true },
+      });
+    }
+
+    if (existingDiscounts.length > 0) {
+      console.log(`[redeem] 🧹 Cleaned ${existingDiscounts.length} old discount(s) for ${customerId}`);
+    }
+
     // Собираем описание с именами товаров и handle
     let productNames = "";
     let firstHandle  = "";
@@ -193,12 +214,11 @@ export async function action({ request }: any) {
       firstHandle  = products[0]?.handle || "";
     }
 
-    // Формируем note для сохранения в БД
     const note = productNames
       ? `Redeemed ${toRedeem} pts · ${productNames}` + (firstHandle ? ` ||${firstHandle}` : "")
       : `Redeemed ${toRedeem} pts`;
 
-    // Генерируем уникальный код
+    // Генерируем новый уникальный код
     const code = "WALLET-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
     // Создаём скидку в Shopify
@@ -209,8 +229,7 @@ export async function action({ request }: any) {
       return json({ error: "Could not create discount: " + discountErr.message }, 500, request);
     }
 
-    // Сохраняем скидку в БД с note — баллы НЕ списываем!
-    // Баллы спишутся в webhook после оплаты заказа.
+    // Сохраняем в БД — баллы НЕ списываем сразу
     await prisma.discount.create({
       data: {
         code,
@@ -218,12 +237,12 @@ export async function action({ request }: any) {
         shop,
         amount:    toRedeem,
         used:      false,
-        note,        // ← сохраняем описание с товарами и handle
+        note,
         expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
 
-    console.log(`[redeem] Discount ${code} created for ${customerId}, ${toRedeem} pts PENDING (not deducted yet)`);
+    console.log(`[redeem] ✅ Discount ${code} created for ${customerId}, ${toRedeem} pts PENDING`);
 
     return json({
       success:    true,
