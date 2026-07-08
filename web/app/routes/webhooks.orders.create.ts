@@ -13,7 +13,6 @@ export const action = async ({ request }: any) => {
     const orderName  = body.name || "";
     const totalPrice = parseFloat(body.total_price || "0");
 
-    // Названия товаров заказа (для истории)
     let orderProductNames = "";
     let orderFirstHandle  = "";
     try {
@@ -30,7 +29,6 @@ export const action = async ({ request }: any) => {
       return new Response("OK");
     }
 
-    // Дедупликация — не обрабатывать дважды
     const existingTx = await prisma.pointsTransaction.findFirst({
       where: { orderId, type: { in: ["cashback", "cashback_pending"] } },
     });
@@ -53,25 +51,26 @@ export const action = async ({ request }: any) => {
       });
 
       if (discountRecord && !discountRecord.used) {
-        const toRedeem = discountRecord.amount;
+        const toRedeem   = discountRecord.amount;
+        const walletCust = discountRecord.customerId;
 
-        // Списать баллы
-        await prisma.wallet.update({
-          where: { shop_customer: { shop, customerId: discountRecord.customerId } },
-          data:  { balance: { decrement: toRedeem } },
-        });
-
-        // Найти кошелёк для walletId
-        const w = await prisma.wallet.findUnique({
-          where: { shop_customer: { shop, customerId: discountRecord.customerId } },
+        // Найти кошелёк по id (без составного ключа)
+        const w = await prisma.wallet.findFirst({
+          where: { customerId: walletCust },
         });
 
         if (w) {
+          // Списать баллы по id
+          await prisma.wallet.update({
+            where: { id: w.id },
+            data:  { balance: { decrement: toRedeem } },
+          });
+
           await prisma.pointsTransaction.create({
             data: {
               walletId:    w.id,
-              shop,
-              customerId:  discountRecord.customerId,
+              shop:        w.shop,
+              customerId:  walletCust,
               orderId,
               type:        "redeemed",
               amount:      -toRedeem,
@@ -80,15 +79,16 @@ export const action = async ({ request }: any) => {
                 : `Redeemed ${toRedeem} pts for order ${orderName}`,
             },
           });
+
+          await prisma.discount.update({
+            where: { code: walletCode },
+            data:  { used: true },
+          });
+
+          console.log(`💳 Wallet ${toRedeem} pts deducted for ${walletCust} (code ${walletCode})`);
+        } else {
+          console.log(`⚠️ Wallet not found for ${walletCust}`);
         }
-
-        // Отметить скидку как использованную
-        await prisma.discount.update({
-          where: { code: walletCode },
-          data:  { used: true },
-        });
-
-        console.log(`💳 Wallet ${toRedeem} pts deducted for ${discountRecord.customerId} (code ${walletCode})`);
       }
     }
 
