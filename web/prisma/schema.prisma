@@ -24,9 +24,9 @@ model Wallet {
 }
 
 model PointsTransaction {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   walletId    String
-  wallet      Wallet   @relation(fields: [walletId], references: [id])
+  wallet      Wallet    @relation(fields: [walletId], references: [id])
   shop        String
   customerId  String
   orderId     String?
@@ -65,48 +65,50 @@ model Discount {
   shop        String
   amount      Float
   used        Boolean  @default(false)
+  note        String?
   expiresAt   DateTime
   createdAt   DateTime @default(now())
 }
 
 model Referral {
-  id                String    @id @default(cuid())
-  shop              String
-  referrerCode      String    @unique
-  referrerId        String
-  refereeId         String?
-  status            String    @default("pending")
-  firstOrderBonus   Int       @default(0)
-  totalBonus        Int       @default(0)
-  createdAt         DateTime  @default(now())
-  completedAt       DateTime?
+  id              String    @id @default(cuid())
+  shop            String
+  referrerCode    String    @unique
+  referrerId      String
+  refereeId       String?
+  status          String    @default("pending")
+  firstOrderBonus Int       @default(0)
+  totalBonus      Int       @default(0)
+  appliedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
   @@index([referrerId])
   @@index([refereeId])
 }
 
 model Subscription {
-  id                        String    @id @default(cuid())
-  shop                      String
-  customerId                String
-  status                    String    @default("active")
-  startedAt                 DateTime  @default(now())
-  lastOrderAt               DateTime?
-  nextChargeDate            DateTime?
-  daysLeft                  Int?
-  monthsActive              Int       @default(0)
-  currentTier               String    @default("bronze")
-  pendingPoints             Int       @default(0)
-  lastBillingMonth          String?
-  subscriptionContractId    String?
-  productId                 String?
-  productTitle              String?
-  productImage              String?
-  productPrice              Float?
-  productVariant            String?
-  productHandle             String?
-  products                  String?
-  productDetails            String?
-  createdAt                 DateTime  @default(now())
-  updatedAt                 DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  shop                   String
+  customerId             String
+  status                 String    @default("active")
+  startedAt              DateTime  @default(now())
+  lastOrderAt            DateTime?
+  nextChargeDate         DateTime?
+  daysLeft               Int?
+  monthsActive           Int       @default(0)
+  currentTier            String    @default("bronze")
+  pendingPoints          Int       @default(0)
+  lastBillingMonth       String?
+  subscriptionContractId String?
+  productId              String?
+  productTitle           String?
+  productImage           String?
+  productPrice           Float?
+  productVariant         String?
+  productHandle          String?
+  products               String?
+  productDetails         String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
   @@unique([shop, customerId])
 }
