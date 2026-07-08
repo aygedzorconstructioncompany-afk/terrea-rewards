@@ -176,6 +176,19 @@ export async function action({ request }: any) {
       return json({ error: "Redeem amount exceeds limit (max 50% of order total)" }, 400, request);
     }
 
+    // Собираем описание с именами товаров и handle
+    let productNames = "";
+    let firstHandle  = "";
+    if (Array.isArray(products) && products.length > 0) {
+      productNames = products.map((p: any) => p?.title || "").filter(Boolean).join(", ");
+      firstHandle  = products[0]?.handle || "";
+    }
+
+    // Формируем note для сохранения в БД
+    const note = productNames
+      ? `Redeemed ${toRedeem} pts · ${productNames}` + (firstHandle ? ` ||${firstHandle}` : "")
+      : `Redeemed ${toRedeem} pts`;
+
     // Генерируем уникальный код
     const code = "WALLET-" + Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -187,15 +200,8 @@ export async function action({ request }: any) {
       return json({ error: "Could not create discount: " + discountErr.message }, 500, request);
     }
 
-    // ✅ Сохраняем скидку в БД — баллы НЕ списываем здесь!
+    // Сохраняем скидку в БД с note — баллы НЕ списываем!
     // Баллы спишутся в webhook после оплаты заказа.
-    let productNames = "";
-    let firstHandle  = "";
-    if (Array.isArray(products) && products.length > 0) {
-      productNames = products.map((p: any) => p?.title || "").filter(Boolean).join(", ");
-      firstHandle  = products[0]?.handle || "";
-    }
-
     await prisma.discount.create({
       data: {
         code,
@@ -203,18 +209,18 @@ export async function action({ request }: any) {
         shop,
         amount:    toRedeem,
         used:      false,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 дней
+        note,        // ← сохраняем описание с товарами и handle
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       },
     });
 
-    // Сохраняем описание товаров в localStorage через ответ
     console.log(`[redeem] Discount ${code} created for ${customerId}, ${toRedeem} pts PENDING (not deducted yet)`);
 
     return json({
       success:    true,
       code,
       redeemed:   toRedeem,
-      newBalance: wallet.balance, // баланс пока не изменился
+      newBalance: wallet.balance,
       productNames,
       firstHandle,
       message:    `${toRedeem} pts will be applied after payment`,
