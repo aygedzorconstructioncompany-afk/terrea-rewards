@@ -3,40 +3,66 @@ import prisma from "../db.server";
 export async function loader({ request }: any) {
   const url = new URL(request.url);
   const secret = url.searchParams.get("secret");
-
   if (secret !== "terrea-admin-2024") {
     return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 });
   }
-
   try {
     const now = new Date();
     const results: any[] = [];
 
+    // ── Шаг 1: Просроченные pending-подписки (30-минутный таймер истёк) ──────
+    // confirmOrder() создаёт подписку со status="pending" и pendingExpiresAt = +30 мин.
+    // Если оплата так и не пришла (webhooks.orders.paid.ts не активировал её) —
+    // переводим в "cancelled", чтобы не висела вечно и фронтенд корректно показал
+    // "No active subscription yet".
+    const expiredPending = await prisma.subscription.findMany({
+      where: {
+        status: "pending",
+        pendingExpiresAt: { lt: now },
+      },
+    });
+
+    console.log(`[cron] Found ${expiredPending.length} expired pending subscriptions`);
+
+    const pendingResults: any[] = [];
+    for (const sub of expiredPending) {
+      try {
+        await prisma.subscription.update({
+          where: { id: sub.id },
+          data: { status: "cancelled", pendingExpiresAt: null },
+        });
+        pendingResults.push({
+          customerId: sub.customerId,
+          action: "expired_to_cancelled",
+          pendingExpiresAt: sub.pendingExpiresAt,
+        });
+        console.log(`[cron] ⏱️ Expired pending subscription for ${sub.customerId} → cancelled`);
+      } catch (e: any) {
+        console.error(`[cron] Error expiring pending for ${sub.customerId}:`, e.message);
+        pendingResults.push({ customerId: sub.customerId, error: e.message });
+      }
+    }
+
+    // ── Шаг 2: Обновление месяцев/тиров для активных подписок ─────────────────
     const subscriptions = await prisma.subscription.findMany({
       where: { status: "active" },
     });
-
     console.log(`[cron] Processing ${subscriptions.length} active subscriptions`);
-
     for (const sub of subscriptions) {
       try {
         const startedAt = new Date(sub.startedAt);
         const diffMs = now.getTime() - startedAt.getTime();
         const diffMonths = Math.floor(diffMs / (1000 * 60 * 60 * 24 * 30));
         const monthsActive = Math.max(1, diffMonths);
-
         const currentTier = monthsActive >= 10 ? "belong+"
           : monthsActive >= 7 ? "belong"
           : monthsActive >= 4 ? "stay"
           : "start";
-
         const prevMonths = sub.monthsActive;
         const prevTier = sub.currentTier;
-
         const wasStart = prevMonths < 4;
         const isNowStay = monthsActive >= 4;
         const shouldTransferPending = wasStart && isNowStay && sub.pendingPoints > 0;
-
         await prisma.subscription.update({
           where: { id: sub.id },
           data: {
@@ -45,18 +71,15 @@ export async function loader({ request }: any) {
             pendingPoints: shouldTransferPending ? 0 : sub.pendingPoints,
           },
         });
-
         if (shouldTransferPending) {
           const wallet = await prisma.wallet.findUnique({
             where: { shop_customer: { shop: sub.shop, customerId: sub.customerId } },
           });
-
           if (wallet) {
             await prisma.wallet.update({
               where: { shop_customer: { shop: sub.shop, customerId: sub.customerId } },
               data: { balance: { increment: sub.pendingPoints }, tier: currentTier },
             });
-
             await prisma.pointsTransaction.create({
               data: {
                 walletId:    wallet.id,
@@ -67,17 +90,14 @@ export async function loader({ request }: any) {
                 description: `Pending баллы зачислены — достигнут тир ${currentTier} (${monthsActive} мес)`,
               },
             });
-
             console.log(`[cron] ✅ Transferred ${sub.pendingPoints} pending pts for ${sub.customerId}`);
           }
         }
-
         await prisma.wallet.upsert({
           where: { shop_customer: { shop: sub.shop, customerId: sub.customerId } },
           create: { shop: sub.shop, customerId: sub.customerId, balance: 0, totalSpent: 0, tier: currentTier },
           update: { tier: currentTier },
         });
-
         results.push({
           customerId:  sub.customerId,
           prevMonths,
@@ -86,9 +106,7 @@ export async function loader({ request }: any) {
           newTier:     currentTier,
           transferred: shouldTransferPending ? sub.pendingPoints : 0,
         });
-
         console.log(`[cron] ${sub.customerId}: ${prevMonths}→${monthsActive} мес, ${prevTier}→${currentTier}`);
-
       } catch (e: any) {
         console.error(`[cron] Error for ${sub.customerId}:`, e.message);
         results.push({ customerId: sub.customerId, error: e.message });
@@ -96,14 +114,15 @@ export async function loader({ request }: any) {
     }
 
     return new Response(JSON.stringify({
-      success:   true,
-      processed: results.length,
-      timestamp: now.toISOString(),
+      success:        true,
+      timestamp:      now.toISOString(),
+      pendingExpired: pendingResults.length,
+      pendingResults,
+      processed:      results.length,
       results,
     }, null, 2), {
       headers: { "Content-Type": "application/json" },
     });
-
   } catch (e: any) {
     return new Response(JSON.stringify({ error: e.message }), {
       status: 500,
