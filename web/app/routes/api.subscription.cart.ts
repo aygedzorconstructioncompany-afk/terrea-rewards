@@ -10,6 +10,8 @@ const corsHeaders = (request: any) => {
   };
 };
 
+const PENDING_TTL_MS = 30 * 60 * 1000; // 30 минут
+
 // Нужен loader для обработки OPTIONS preflight
 export async function loader({ request }: any) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -40,6 +42,16 @@ export async function action({ request }: any) {
     const sub = await prisma.subscription.findFirst({
       where: { shop, customerId: String(customer_id) }
     });
+
+    // Защита: если подписка существует и НЕ active — менять товары через галочку
+    // в мини-корзине нельзя. Единственный легитимный путь оживить подписку —
+    // confirmOrder() на subscribe-save с реальной оплатой checkout.
+    if (sub && sub.status !== "active" && act === "add") {
+      return Response.json(
+        { error: "Subscription is not active. Please complete checkout on the Subscribe & Save page first." },
+        { status: 400, headers: corsHeaders(request) }
+      );
+    }
 
     let products: string[] = [];
     let productDetails: any[] = [];
@@ -80,8 +92,16 @@ export async function action({ request }: any) {
     };
 
     if (!sub) {
+      // Новая подписка через мини-корзину — тоже требует оплаты, поэтому pending,
+      // а не active. Активация произойдёт в webhooks.orders.paid.ts после checkout.
       await prisma.subscription.create({
-        data: { shop, customerId: String(customer_id), status: "active", ...updateData }
+        data: {
+          shop,
+          customerId: String(customer_id),
+          status: "pending",
+          pendingExpiresAt: new Date(Date.now() + PENDING_TTL_MS),
+          ...updateData,
+        }
       });
     } else {
       await prisma.subscription.update({
