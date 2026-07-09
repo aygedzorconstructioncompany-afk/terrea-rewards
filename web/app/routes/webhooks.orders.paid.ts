@@ -39,6 +39,7 @@ export async function action({ request }: ActionFunctionArgs) {
   const sourceName  = (payload.source_name || "").toLowerCase();
   const customerEmail = payload.customer?.email || payload.email || "";
   const customerName  = [payload.customer?.first_name, payload.customer?.last_name].filter(Boolean).join(' ') || customerEmail;
+  const lineItems: any[] = payload.line_items || [];
 
   const isSubscription =
     tags.includes("subscription") ||
@@ -153,7 +154,7 @@ export async function action({ request }: ActionFunctionArgs) {
         }
 
         try {
-          const products = JSON.parse(subCheck!.products);
+          const products = JSON.parse(subCheck!.products!);
           console.log(`[orders/paid] 🔍 Parsed products count=${products.length}`);
           if (products.length > 0) {
             await prisma.subscription.update({
@@ -165,6 +166,77 @@ export async function action({ request }: ActionFunctionArgs) {
         } catch (e: any) {
           console.error(`[orders/paid] ❌ Reactivation failed for ${customerId}:`, e.message);
         }
+      }
+
+      // ── Подтверждение staged-товаров из мини-корзины (галочка "Subscribe & Save") ──
+      // Товар, отмеченный галочкой в мини-корзине, живёт в stagedProducts до
+      // 30 минут (stagedExpiresAt) и НИКОГДА не попадает в биллинг сам по себе.
+      // Он становится частью реальной подписки только если клиент реально
+      // оплатил заказ (вот этот вебхук), и только для тех staged-товаров,
+      // которые действительно есть в line_items оплаченного заказа.
+      // Это защищает клиента: если он поставил галочку и забыл/ушёл, не
+      // завершив заказ — товар НЕ попадёт в подписку и с него ничего не спишут.
+      try {
+        const freshSub = await prisma.subscription.findFirst({
+          where: { shop: MAIN_SHOP, customerId }
+        });
+
+        const stagedNotExpired =
+          !!(freshSub as any)?.stagedExpiresAt &&
+          new Date((freshSub as any).stagedExpiresAt) > new Date();
+
+        if (freshSub && stagedNotExpired) {
+          let stagedIds: string[] = [];
+          let stagedDetails: any[] = [];
+          try { stagedIds = JSON.parse((freshSub as any).stagedProducts || "[]"); } catch {}
+          try { stagedDetails = JSON.parse((freshSub as any).stagedProductDetails || "[]"); } catch {}
+
+          const paidProductIds = new Set(
+            lineItems.map((li: any) => String(li.product_id))
+          );
+
+          const confirmedIds = stagedIds.filter((id) => paidProductIds.has(String(id)));
+
+          if (confirmedIds.length > 0) {
+            let currentProducts: string[] = [];
+            let currentDetails: any[] = [];
+            try { currentProducts = JSON.parse(freshSub.products || "[]"); } catch {}
+            try { currentDetails = JSON.parse((freshSub as any).productDetails || "[]"); } catch {}
+
+            for (const id of confirmedIds) {
+              if (!currentProducts.includes(id)) {
+                currentProducts.push(id);
+                const detail = stagedDetails.find((d: any) => d.id === id);
+                if (detail) currentDetails.push(detail);
+              }
+            }
+
+            // Остаток staged (не оплаченный в этом заказе) остаётся ждать
+            // своего заказа до истечения TTL — ничего не теряем зря.
+            const remainingStagedIds = stagedIds.filter((id) => !confirmedIds.includes(id));
+            const remainingStagedDetails = stagedDetails.filter((d: any) => remainingStagedIds.includes(d.id));
+
+            const shouldActivate = freshSub.status !== 'active';
+
+            await prisma.subscription.update({
+              where: { id: freshSub.id },
+              data: {
+                products: JSON.stringify(currentProducts),
+                productDetails: JSON.stringify(currentDetails),
+                stagedProducts: remainingStagedIds.length > 0 ? JSON.stringify(remainingStagedIds) : null,
+                stagedProductDetails: remainingStagedIds.length > 0 ? JSON.stringify(remainingStagedDetails) : null,
+                stagedExpiresAt: remainingStagedIds.length > 0 ? (freshSub as any).stagedExpiresAt : null,
+                ...(shouldActivate ? { status: 'active', startedAt: new Date(), pendingExpiresAt: null } : {}),
+              }
+            });
+
+            console.log(`[orders/paid] ✅ Confirmed staged products [${confirmedIds.join(', ')}] for ${customerId} (paid order ${orderName})`);
+          } else {
+            console.log(`[orders/paid] ℹ️ Staged products exist for ${customerId} but none matched paid line items of order ${orderName} — left untouched`);
+          }
+        }
+      } catch (e: any) {
+        console.error(`[orders/paid] ❌ Staged confirmation failed for ${customerId}:`, e.message);
       }
 
       const wallet = await prisma.wallet.findUnique({
