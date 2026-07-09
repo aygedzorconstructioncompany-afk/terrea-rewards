@@ -17,6 +17,8 @@ function getTier(monthsActive: number) {
   return                         { tier: "start",   rate: 0.10, next: "stay",    monthsToNext: 4 - monthsActive };
 }
 
+const PENDING_TTL_MS = 30 * 60 * 1000; // 30 минут
+
 export async function loader({ request }: any) {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
@@ -66,6 +68,7 @@ export async function loader({ request }: any) {
       monthsToNext: tierInfo.monthsToNext,
       startedAt: sub.startedAt,
       lastOrderAt: sub.lastOrderAt,
+      pendingExpiresAt: (sub as any).pendingExpiresAt || null,
       subscribedProducts,
       allProducts: productDetails,
       productDetails,
@@ -84,7 +87,7 @@ export async function action({ request }: any) {
 
   try {
     const body = await request.json();
-    const { customer_id, action: act, products, productDetails } = body;
+    const { customer_id, action: act, products, productDetails, status } = body;
 
     if (!customer_id) {
       return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
@@ -94,17 +97,35 @@ export async function action({ request }: any) {
       const sub = await prisma.subscription.findFirst({
         where: { shop, customerId: String(customer_id) }
       });
+
       const updateData: any = {
         products: JSON.stringify(products || []),
       };
       if (productDetails) {
         updateData.productDetails = JSON.stringify(productDetails);
       }
+
+      // status: 'pending' приходит из confirmOrder() ДО оплаты.
+      // Подписка НЕ должна становиться active здесь — активация только в webhooks.orders.paid.ts
+      const wantsPending = status === "pending";
+
       if (!sub) {
         await prisma.subscription.create({
-          data: { shop, customerId: String(customer_id), status: "active", ...updateData }
+          data: {
+            shop,
+            customerId: String(customer_id),
+            status: wantsPending ? "pending" : "active",
+            pendingExpiresAt: wantsPending ? new Date(Date.now() + PENDING_TTL_MS) : null,
+            ...updateData,
+          }
         });
       } else {
+        // Не понижаем уже активную подписку до pending — pending имеет смысл
+        // только для новой записи или для отменённой/просроченной подписки
+        if (wantsPending && sub.status !== "active") {
+          updateData.status = "pending";
+          updateData.pendingExpiresAt = new Date(Date.now() + PENDING_TTL_MS);
+        }
         await prisma.subscription.update({
           where: { id: sub.id },
           data: updateData
@@ -117,24 +138,38 @@ export async function action({ request }: any) {
       const statusMap: Record<string, string> = { pause: "paused", resume: "active", cancel: "cancelled" };
       await prisma.subscription.updateMany({
         where: { shop, customerId: String(customer_id) },
-        data: { status: statusMap[act] }
+        data: { status: statusMap[act], pendingExpiresAt: null }
       });
       return Response.json({ success: true }, { headers: corsHeaders(request) });
     }
 
     if (act === "create") {
+      const wantsPending = status === "pending";
       const existing = await prisma.subscription.findFirst({
         where: { shop, customerId: String(customer_id) }
       });
       if (!existing) {
         await prisma.subscription.create({
-          data: { shop, customerId: String(customer_id), status: "active", products: JSON.stringify(products || []) }
+          data: {
+            shop,
+            customerId: String(customer_id),
+            status: wantsPending ? "pending" : "active",
+            pendingExpiresAt: wantsPending ? new Date(Date.now() + PENDING_TTL_MS) : null,
+            products: JSON.stringify(products || [])
+          }
         });
       } else {
-        await prisma.subscription.update({
-          where: { id: existing.id },
-          data: { status: "active" }
-        });
+        if (wantsPending && existing.status !== "active") {
+          await prisma.subscription.update({
+            where: { id: existing.id },
+            data: { status: "pending", pendingExpiresAt: new Date(Date.now() + PENDING_TTL_MS) }
+          });
+        } else if (!wantsPending) {
+          await prisma.subscription.update({
+            where: { id: existing.id },
+            data: { status: "active", pendingExpiresAt: null }
+          });
+        }
       }
       return Response.json({ success: true }, { headers: corsHeaders(request) });
     }
