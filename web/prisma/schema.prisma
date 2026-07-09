@@ -101,7 +101,19 @@ model Subscription {
   productHandle          String?
   products               String?
   productDetails         String?
-  pendingExpiresAt        DateTime?
+  pendingExpiresAt       DateTime?
+
+  // ── Staging для галочки "Subscribe & Save" в мини-корзине ──────────────
+  // Клик по галочке НИКОГДА не пишет напрямую в products/productDetails.
+  // Он пишет сюда — это черновик, который живёт максимум 30 минут и
+  // становится частью реальной подписки только когда клиент реально
+  // оформил и оплатил заказ с этим товаром (см. webhooks.orders.paid.ts).
+  // Если клиент забыл/ушёл и не оплатил — staged просто истекает и
+  // на биллинг никак не влияет.
+  stagedProducts         String?
+  stagedProductDetails   String?
+  stagedExpiresAt        DateTime?
+
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   @@unique([shop, customerId])
