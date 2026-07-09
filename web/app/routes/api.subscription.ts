@@ -98,16 +98,27 @@ export async function action({ request }: any) {
         where: { shop, customerId: String(customer_id) }
       });
 
+      const wantsPending = status === "pending";
+
+      // Защита: если подписка существует и НЕ active — менять список товаров
+      // можно только через явный confirmOrder() с status:'pending' (новое оформление,
+      // требующее оплаты). Обычный "Add product" / "Save qty" (без status) не должен
+      // молча работать на pending/cancelled/paused подписке — иначе получится
+      // добавить товары без оплаты, а затем случайный будущий заказ активирует
+      // подписку с этими бесплатно добавленными товарами.
+      if (sub && sub.status !== "active" && !wantsPending) {
+        return Response.json(
+          { error: "Subscription is not active. Please complete checkout to add or change products." },
+          { status: 400, headers: corsHeaders(request) }
+        );
+      }
+
       const updateData: any = {
         products: JSON.stringify(products || []),
       };
       if (productDetails) {
         updateData.productDetails = JSON.stringify(productDetails);
       }
-
-      // status: 'pending' приходит из confirmOrder() ДО оплаты.
-      // Подписка НЕ должна становиться active здесь — активация только в webhooks.orders.paid.ts
-      const wantsPending = status === "pending";
 
       if (!sub) {
         await prisma.subscription.create({
