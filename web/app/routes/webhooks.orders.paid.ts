@@ -132,9 +132,11 @@ export async function action({ request }: ActionFunctionArgs) {
       // (первое оформление — confirmOrder() сохранил её как pending до оплаты).
       // Активация подписки происходит ТОЛЬКО здесь, после реальной оплаты заказа.
       const isReactivatable =
-        subCheck &&
+        !!subCheck &&
         (subCheck.status === 'cancelled' || subCheck.status === 'canceled' || subCheck.status === 'pending') &&
-        subCheck.products;
+        !!subCheck.products;
+
+      console.log(`[orders/paid] 🔍 subCheck found=${!!subCheck} status=${subCheck?.status} hasProducts=${!!subCheck?.products} isReactivatable=${isReactivatable}`);
 
       if (isReactivatable) {
         const pendingExpiresAt = (subCheck as any).pendingExpiresAt;
@@ -152,6 +154,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
         try {
           const products = JSON.parse(subCheck!.products);
+          console.log(`[orders/paid] 🔍 Parsed products count=${products.length}`);
           if (products.length > 0) {
             await prisma.subscription.update({
               where: { id: subCheck!.id },
@@ -159,7 +162,9 @@ export async function action({ request }: ActionFunctionArgs) {
             });
             console.log(`[orders/paid] ✅ Auto-activated subscription for ${customerId} (was ${subCheck!.status})`);
           }
-        } catch {}
+        } catch (e: any) {
+          console.error(`[orders/paid] ❌ Reactivation failed for ${customerId}:`, e.message);
+        }
       }
 
       const wallet = await prisma.wallet.findUnique({
