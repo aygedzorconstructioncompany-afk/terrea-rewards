@@ -127,15 +127,37 @@ export async function action({ request }: ActionFunctionArgs) {
       const subCheck = await prisma.subscription.findFirst({
         where: { shop: MAIN_SHOP, customerId }
       });
-      if (subCheck && (subCheck.status === 'cancelled' || subCheck.status === 'canceled') && subCheck.products) {
+
+      // Активация: подписка была cancelled/canceled (реактивация) ИЛИ pending
+      // (первое оформление — confirmOrder() сохранил её как pending до оплаты).
+      // Активация подписки происходит ТОЛЬКО здесь, после реальной оплаты заказа.
+      const isReactivatable =
+        subCheck &&
+        (subCheck.status === 'cancelled' || subCheck.status === 'canceled' || subCheck.status === 'pending') &&
+        subCheck.products;
+
+      if (isReactivatable) {
+        const pendingExpiresAt = (subCheck as any).pendingExpiresAt;
+        const isExpiredPending =
+          subCheck!.status === 'pending' &&
+          pendingExpiresAt &&
+          new Date(pendingExpiresAt) < new Date();
+
+        if (isExpiredPending) {
+          // Оплата пришла позже 30-минутного окна. Shopify уже списал деньги
+          // за заказ, поэтому активируем всё равно — просто логируем как edge case,
+          // чтобы можно было отследить частоту таких случаев.
+          console.log(`[orders/paid] ⚠️ Payment arrived after pending window expired for ${customerId} — activating anyway`);
+        }
+
         try {
-          const products = JSON.parse(subCheck.products);
+          const products = JSON.parse(subCheck!.products);
           if (products.length > 0) {
             await prisma.subscription.update({
-              where: { id: subCheck.id },
-              data: { status: 'active', startedAt: new Date() }
+              where: { id: subCheck!.id },
+              data: { status: 'active', startedAt: new Date(), pendingExpiresAt: null }
             });
-            console.log(`[orders/paid] ✅ Auto-activated subscription for ${customerId}`);
+            console.log(`[orders/paid] ✅ Auto-activated subscription for ${customerId} (was ${subCheck!.status})`);
           }
         } catch {}
       }
@@ -169,6 +191,14 @@ export async function action({ request }: ActionFunctionArgs) {
         },
       });
       console.log(`[orders/paid] ✅ Auto-created subscription for ${customerId}`);
+    } else if (sub.status === 'pending') {
+      // Renewal-заказ с тегом subscription пришёл, а запись всё ещё pending —
+      // тоже активируем на всякий случай (защита от гонки состояний)
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { status: 'active', pendingExpiresAt: null }
+      });
+      sub.status = 'active';
     }
 
     const newMonthsActive = sub.monthsActive + 1;
