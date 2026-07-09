@@ -10,9 +10,8 @@ const corsHeaders = (request: any) => {
   };
 };
 
-const PENDING_TTL_MS = 30 * 60 * 1000; // 30 минут
+const STAGED_TTL_MS = 30 * 60 * 1000; // 30 минут
 
-// Нужен loader для обработки OPTIONS preflight
 export async function loader({ request }: any) {
   return new Response(null, { status: 204, headers: corsHeaders(request) });
 }
@@ -28,8 +27,8 @@ export async function action({ request }: any) {
     const product_title  = body.product_title || "Unknown product";
     const product_image  = body.product_image || "";
     const price          = body.price || 0;
-    const quantity       = parseInt(body.quantity) || 1;   // ← читаем количество
-    const act            = body.action;
+    const quantity       = parseInt(body.quantity) || 1;
+    const act            = body.action; // "add" | "remove"
     const shop           = body.shop || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
     if (!customer_id || !product_id) {
@@ -43,74 +42,72 @@ export async function action({ request }: any) {
       where: { shop, customerId: String(customer_id) }
     });
 
-    // Защита: если подписка существует и НЕ active — менять товары через галочку
-    // в мини-корзине нельзя. Единственный легитимный путь оживить подписку —
-    // confirmOrder() на subscribe-save с реальной оплатой checkout.
-    if (sub && sub.status !== "active" && act === "add") {
-      return Response.json(
-        { error: "Subscription is not active. Please complete checkout on the Subscribe & Save page first." },
-        { status: 400, headers: corsHeaders(request) }
-      );
-    }
+    // Читаем текущий staged-черновик (не реальные products!).
+    // Если он уже истёк — считаем его пустым, начинаем заново.
+    let stagedProducts: string[] = [];
+    let stagedProductDetails: any[] = [];
+    const notExpired =
+      sub?.stagedExpiresAt && new Date(sub.stagedExpiresAt as any) > new Date();
 
-    let products: string[] = [];
-    let productDetails: any[] = [];
-    if (sub?.products) {
-      try { products = JSON.parse(sub.products); } catch {}
-    }
-    if ((sub as any)?.productDetails) {
-      try { productDetails = JSON.parse((sub as any).productDetails); } catch {}
+    if (notExpired) {
+      try { stagedProducts = JSON.parse(sub!.stagedProducts || "[]"); } catch {}
+      try { stagedProductDetails = JSON.parse(sub!.stagedProductDetails || "[]"); } catch {}
     }
 
     if (act === "add") {
-      if (!products.includes(String(product_id))) {
-        products.push(String(product_id));
-        productDetails.push({
-          id:       String(product_id),
-          title:    product_title,
-          images:   product_image ? [{ src: product_image }] : [],
+      if (!stagedProducts.includes(String(product_id))) {
+        stagedProducts.push(String(product_id));
+        stagedProductDetails.push({
+          id:     String(product_id),
+          title:  product_title,
+          images: product_image ? [{ src: product_image }] : [],
           price,
-          quantity,          // ← сохраняем количество
+          quantity,
         });
       } else {
-        // Товар уже есть — обновляем его количество
-        const existing = productDetails.find((p: any) => p.id === String(product_id));
-        if (existing) {
-          existing.quantity = quantity;
-        }
+        const existing = stagedProductDetails.find((p: any) => p.id === String(product_id));
+        if (existing) existing.quantity = quantity;
       }
     } else if (act === "remove") {
-      products       = products.filter((id) => id !== String(product_id));
-      productDetails = productDetails.filter((p: any) => p.id !== String(product_id));
+      stagedProducts       = stagedProducts.filter((id) => id !== String(product_id));
+      stagedProductDetails = stagedProductDetails.filter((p: any) => p.id !== String(product_id));
     } else {
       return Response.json({ error: "Unknown action" }, { status: 400, headers: corsHeaders(request) });
     }
 
-    const updateData = {
-      products:       JSON.stringify(products),
-      productDetails: JSON.stringify(productDetails),
+    const stagedData = {
+      stagedProducts:       JSON.stringify(stagedProducts),
+      stagedProductDetails: JSON.stringify(stagedProductDetails),
+      // Каждое изменение (add/remove) продлевает окно на 30 минут заново —
+      // как только staged список пуст, expiresAt можно занулить.
+      stagedExpiresAt: stagedProducts.length > 0
+        ? new Date(Date.now() + STAGED_TTL_MS)
+        : null,
     };
 
     if (!sub) {
-      // Новая подписка через мини-корзину — тоже требует оплаты, поэтому pending,
-      // а не active. Активация произойдёт в webhooks.orders.paid.ts после checkout.
+      // Подписки ещё нет вообще — создаём запись только со staged-данными.
+      // Явно ставим status "none", чтобы webhooks.orders.paid.ts не спутал
+      // её с настоящей активной подпиской, пока не будет реальной оплаты.
       await prisma.subscription.create({
         data: {
           shop,
           customerId: String(customer_id),
-          status: "pending",
-          pendingExpiresAt: new Date(Date.now() + PENDING_TTL_MS),
-          ...updateData,
+          status: "none",
+          ...stagedData,
         }
       });
     } else {
       await prisma.subscription.update({
         where: { id: sub.id },
-        data:  updateData,
+        data: stagedData,
       });
     }
 
-    return Response.json({ success: true, products }, { headers: corsHeaders(request) });
+    // Товар НЕ появляется в реальной подписке прямо сейчас.
+    // Он попадёт туда только через webhooks.orders.paid.ts,
+    // когда клиент реально оформит и оплатит заказ с этим товаром.
+    return Response.json({ success: true, staged: stagedProducts }, { headers: corsHeaders(request) });
   } catch (e: any) {
     console.error("[api.subscription.cart]", e);
     return Response.json({ error: e.message }, { status: 500, headers: corsHeaders(request) });
