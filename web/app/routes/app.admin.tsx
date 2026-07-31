@@ -4,8 +4,7 @@ export function clientLoader() { return null; }
 export function HydrateFallback() { return null; }
 
 const SECRET = "terrea-admin-2024";
-const SHOP = "terrea-home-rituals.myshopify.com";
-
+const SHOP = "hrwxgq-ka.myshopify.com";
 const S: Record<string, React.CSSProperties> = {
   wrap: { fontFamily: "'Cabin', -apple-system, sans-serif", background: "#FFFAE4", minHeight: "100vh", padding: "32px 40px", color: "#1A1B18" },
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px" },
