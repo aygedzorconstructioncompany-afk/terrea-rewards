@@ -25,7 +25,7 @@ export async function loader({ request }: any) {
   }
   const url = new URL(request.url);
   const customerId = url.searchParams.get("customer_id");
-  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
+  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "hrwxgq-ka.myshopify.com";
 
   if (!customerId) {
     return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
@@ -83,11 +83,11 @@ export async function action({ request }: any) {
     return new Response(null, { status: 204, headers: corsHeaders(request) });
   }
   const url = new URL(request.url);
-  const shop = url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "terrea-home-rituals.myshopify.com";
 
   try {
     const body = await request.json();
-    const { customer_id, action: act, products, productDetails, status } = body;
+    const { customer_id, action: act, products, productDetails, status, shop: bodyShop } = body;
+    const shop = bodyShop || url.searchParams.get("shop") || process.env.SHOPIFY_SHOP_DOMAIN || "hrwxgq-ka.myshopify.com";
 
     if (!customer_id) {
       return Response.json({ error: "No customer_id" }, { status: 400, headers: corsHeaders(request) });
